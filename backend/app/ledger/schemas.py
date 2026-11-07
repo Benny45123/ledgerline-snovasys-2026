@@ -10,7 +10,7 @@ unauthorized parameter injection attacks. Response models never leak counterpart
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.config import settings
 
 
@@ -49,6 +49,16 @@ class TransferRequest(StrictLedgerBaseModel):
     )
     memo: Optional[str] = Field(None, max_length=140, description="Optional transaction memo")
 
+    @field_validator("from_account_id", mode="before")
+    @classmethod
+    def parse_from_account_id(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return UUID(v)
+            except ValueError:
+                raise ValueError("Invalid UUID format")
+        return v
+
 
 class AdjustmentRequest(StrictLedgerBaseModel):
     account_id: UUID = Field(..., description="Account UUID to adjust against SUSPENSE")
@@ -60,6 +70,16 @@ class AdjustmentRequest(StrictLedgerBaseModel):
         description="Signed adjustment amount in paise (+ credit, - debit)",
     )
     reason: str = Field(..., min_length=5, max_length=255, description="Mandatory audit reason for adjustment")
+
+    @field_validator("account_id", mode="before")
+    @classmethod
+    def parse_account_id(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return UUID(v)
+            except ValueError:
+                raise ValueError("Invalid UUID format")
+        return v
 
 
 class PostingEntryResponse(StrictLedgerBaseModel):
@@ -96,6 +116,8 @@ class StatementItem(StrictLedgerBaseModel):
     journal_id: Optional[UUID] = None
     reason_code: Optional[str] = None
     request_id: str
+    prev_hash: Optional[str] = None
+    entry_hash: Optional[str] = None
 
 
 class StatementResponse(StrictLedgerBaseModel):
@@ -105,4 +127,6 @@ class StatementResponse(StrictLedgerBaseModel):
     overdraft_limit: int
     status: str
     items: List[StatementItem]
+    has_more: bool = False
+    next_after: Optional[int] = None
     next_cursor: Optional[int] = None

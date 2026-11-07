@@ -32,6 +32,7 @@ class Discrepancy(BaseModel):
 class AuditVerifyReport(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     verified: bool
+    is_valid: bool = True
     total_accounts_checked: int
     total_entries_verified: int
     total_journals_verified: int
@@ -212,6 +213,7 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
 
     return AuditVerifyReport(
         verified=verified,
+        is_valid=verified,
         total_accounts_checked=len(accounts),
         total_entries_verified=total_entries,
         total_journals_verified=total_journals,

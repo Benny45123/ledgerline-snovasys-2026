@@ -1,0 +1,1080 @@
+/* ==============================================================================
+   LedgerLine App Component Styles (Scoped to /app)
+   Extracted verbatim from frontend/LedgerLine — app.html
+   ============================================================================== */
+
+.app-root {
+  --bg: #f6f5f1;
+  --bg2: #ffffff;
+  --fg: #0e0f0c;
+  --mut: #6a6c66;
+  --line: #e3e1da;
+  --tint: #e4f0e8;
+  --acc: #0b5d3b;
+  --bad: #b3261e;
+  --badt: #fbe9e7;
+  --amb: #8a5a00;
+  --ambt: #fbf0d4;
+  --band: #0e0f0c;
+  --sh: 0 30px 60px -36px rgba(14, 15, 12, 0.3);
+  box-sizing: border-box;
+  color-scheme: light;
+  min-height: 100vh;
+  background-color: var(--bg);
+  color: var(--fg);
+  font: 400 16px/1.5 Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color 0.5s, color 0.5s;
+}
+
+[data-theme="dark"] .app-root,
+.app-root[data-theme="dark"] {
+  --bg: #0b0d0c;
+  --bg2: #141716;
+  --fg: #f4f3ee;
+  --mut: #98a09b;
+  --line: #232826;
+  --tint: #12261b;
+  --acc: #5fe0a3;
+  --bad: #ff8a80;
+  --badt: #2a1715;
+  --amb: #ffc857;
+  --ambt: #2b2410;
+  --band: #0f2a1d;
+  --sh: 0 30px 60px -36px rgba(0, 0, 0, 0.7);
+  color-scheme: dark;
+}
+
+.app-root * {
+  box-sizing: border-box;
+}
+
+.app-root h1,
+.app-root h2,
+.app-root h3 {
+  font-family: "Inter Tight", Inter, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  line-height: 1;
+  margin: 0;
+  color: var(--fg);
+}
+
+.app-root em {
+  font: italic 400 1.05em "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.01em;
+  color: inherit;
+}
+
+.app-root .mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+.app-root a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.app-root .wrap {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.app-root button {
+  font-family: inherit;
+}
+
+.app-root .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 13px 24px;
+  border-radius: 99px;
+  font: 500 15px Inter, sans-serif;
+  background: var(--fg);
+  color: var(--bg);
+  border: 0;
+  cursor: pointer;
+  transition: transform 0.3s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.2s;
+}
+
+.app-root .btn:hover {
+  transform: translateY(-2px);
+}
+
+.app-root .btn:disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.app-root .btn.o {
+  background: transparent;
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.app-root .btn.sm {
+  padding: 9px 16px;
+  font-size: 14px;
+}
+
+.app-root .btn.w {
+  width: 100%;
+}
+
+.app-root .tg {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--fg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: transform 0.5s;
+}
+
+.app-root .tg:hover {
+  transform: rotate(30deg);
+}
+
+.app-root .tg .mo {
+  display: none;
+}
+
+[data-theme="dark"] .app-root .tg .su,
+.app-root[data-theme="dark"] .tg .su {
+  display: none;
+}
+
+[data-theme="dark"] .app-root .tg .mo,
+.app-root[data-theme="dark"] .tg .mo {
+  display: block;
+}
+
+.app-root .chip {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--tint);
+  color: var(--acc);
+  white-space: nowrap;
+}
+
+.app-root .chip.b {
+  background: var(--badt);
+  color: var(--bad);
+}
+
+.app-root .chip.a {
+  background: var(--ambt);
+  color: var(--amb);
+}
+
+.app-root .chip.n {
+  background: var(--bg);
+  color: var(--mut);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.app-root label {
+  display: block;
+  font-size: 13px;
+  color: var(--mut);
+  margin-bottom: 14px;
+}
+
+.app-root input,
+.app-root select,
+.app-root textarea {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--bg2);
+  color: var(--fg);
+  font: 500 16px Inter, sans-serif;
+  outline: 0;
+  transition: box-shadow 0.2s, border-color 0.2s;
+}
+
+.app-root input:focus,
+.app-root select:focus,
+.app-root textarea:focus {
+  border-color: var(--acc);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--acc) 18%, transparent);
+}
+
+.app-root .seg {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 99px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  max-width: 100%;
+}
+
+.app-root .seg button {
+  border: 0;
+  background: none;
+  color: var(--mut);
+  padding: 8px 16px;
+  border-radius: 99px;
+  font: 500 14px Inter, sans-serif;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.app-root .seg .on,
+.app-root .seg button.on {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.app-root .nv {
+  position: sticky;
+  top: env(safe-area-inset-top, 0px);
+  z-index: 30;
+  background: color-mix(in srgb, var(--bg) 85%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--line);
+}
+
+.app-root .nv .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 68px;
+  gap: 16px;
+}
+
+.app-root .logo {
+  font: 700 20px "Inter Tight", sans-serif;
+  letter-spacing: -0.04em;
+  color: var(--fg);
+  text-decoration: none;
+}
+
+.app-root .tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.app-root .tabs a,
+.app-root .tabs button {
+  padding: 9px 18px;
+  border-radius: 99px;
+  color: var(--mut);
+  font-size: 15px;
+  font-weight: 500;
+  transition: all 0.3s;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.app-root .tabs a:hover,
+.app-root .tabs button:hover {
+  color: var(--fg);
+}
+
+.app-root .tabs a.on,
+.app-root .tabs button.on {
+  background: var(--fg);
+  color: var(--bg);
+}
+
+.app-root .rt {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.app-root .bb {
+  display: none;
+}
+
+.app-root .view {
+  padding-top: 36px;
+  padding-bottom: 80px;
+}
+
+.app-root .c {
+  animation: app-up 0.8s both cubic-bezier(0.2, 0.7, 0.2, 1);
+  animation-delay: calc(var(--i, 0) * 80ms);
+}
+
+@keyframes app-up {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+}
+
+.app-root .hd {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+
+.app-root .hd h2 {
+  font-size: clamp(34px, 5vw, 52px);
+}
+
+.app-root .hd p {
+  margin: 6px 0 0;
+  color: var(--mut);
+}
+
+.app-root .card {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  padding: 24px;
+  box-shadow: var(--sh);
+  transition: background-color 0.5s, border-color 0.5s;
+}
+
+.app-root .card h3 {
+  font-size: 20px;
+  margin-bottom: 4px;
+}
+
+.app-root .card > small,
+.app-root .sm2 {
+  color: var(--mut);
+  font-size: 13px;
+}
+
+.app-root .kpi {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: 24px;
+  background: var(--bg2);
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+
+.app-root .kpi > div {
+  padding: 22px 24px;
+  border-right: 1px solid var(--line);
+}
+
+.app-root .kpi > div:last-child {
+  border: 0;
+}
+
+.app-root .kpi small {
+  color: var(--mut);
+  font-size: 13px;
+  display: block;
+}
+
+.app-root .kpi b {
+  font: 600 clamp(22px, 2.6vw, 32px) "Inter Tight", sans-serif;
+  letter-spacing: -0.04em;
+  display: block;
+  margin-top: 6px;
+}
+
+.app-root .g2 {
+  display: grid;
+  grid-template-columns: 1.6fr 1fr;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.app-root .chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 240px;
+  margin-top: 20px;
+  padding-top: 34px;
+}
+
+.app-root .chart i {
+  position: relative;
+  flex: 1;
+  height: var(--h);
+  border-radius: 10px 10px 4px 4px;
+  background: var(--line);
+  transform-origin: bottom;
+  animation: app-grow 1s both cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation-delay: calc(var(--i) * 45ms + 0.3s);
+  transition: background-color 0.3s;
+}
+
+@keyframes app-grow {
+  from {
+    transform: scaleY(0);
+  }
+}
+
+.app-root .chart i:hover,
+.app-root .chart i.hi {
+  background: var(--acc);
+}
+
+.app-root .chart .tip {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--fg);
+  color: var(--bg);
+  font: 500 12px "JetBrains Mono", monospace;
+  padding: 5px 9px;
+  border-radius: 8px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s;
+}
+
+.app-root .chart i:hover .tip,
+.app-root .chart i.hi .tip {
+  opacity: 1;
+}
+
+.app-root .ax {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  color: var(--mut);
+  font-size: 11px;
+}
+
+.app-root .ax span {
+  flex: 1;
+  text-align: center;
+}
+
+.app-root .acct {
+  border-radius: 24px;
+  padding: 26px;
+  color: #fff;
+  background: linear-gradient(150deg, var(--band), color-mix(in srgb, var(--acc) 42%, var(--band)));
+  position: relative;
+  overflow: hidden;
+  min-height: 230px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.app-root .acct small {
+  opacity: 0.7;
+}
+
+.app-root .acct .big {
+  font: 600 clamp(28px, 3.4vw, 38px) "Inter Tight", sans-serif;
+  letter-spacing: -0.04em;
+  margin: 6px 0;
+}
+
+.app-root .acct .chip {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.app-root .acts {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.app-root .acts button {
+  flex: 1;
+  min-width: 84px;
+  padding: 11px 8px;
+  border-radius: 14px;
+  border: 0;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font: 500 14px Inter, sans-serif;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.app-root .acts button:hover {
+  background: rgba(255, 255, 255, 0.26);
+}
+
+.app-root .tbl {
+  margin-top: 16px;
+  overflow-x: auto;
+}
+
+.app-root .tr {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr;
+  gap: 12px;
+  padding: 16px 8px;
+  border-top: 1px solid var(--line);
+  align-items: center;
+  font-size: 15px;
+  transition: background-color 0.3s;
+  border-radius: 8px;
+}
+
+.app-root .tr:hover {
+  background: var(--bg);
+}
+
+.app-root .tr.h {
+  border: 0;
+  color: var(--mut);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-bottom: 6px;
+}
+
+.app-root .tr.h:hover {
+  background: none;
+}
+
+.app-root .tr small {
+  display: block;
+  color: var(--mut);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.app-root .r {
+  text-align: right;
+}
+
+.app-root .neg {
+  color: var(--bad);
+}
+
+.app-root .pos {
+  color: var(--acc);
+}
+
+.app-root .tr.rf {
+  background: var(--badt);
+}
+
+.app-root .auth {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  min-height: 100vh;
+}
+
+.app-root .al {
+  padding: 32px 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 32px;
+}
+
+.app-root .af {
+  max-width: 420px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.app-root .af h1 {
+  font-size: clamp(40px, 5vw, 60px);
+  margin-bottom: 12px;
+  color: var(--fg);
+}
+
+.app-root .af .sub {
+  color: var(--mut);
+  margin: 0 0 24px;
+}
+
+.app-root .af .seg {
+  margin-bottom: 22px;
+}
+
+.app-root .fo {
+  color: var(--mut);
+  font-size: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.app-root .ar {
+  position: relative;
+  margin: 16px;
+  border-radius: 32px;
+  background: var(--band);
+  color: #fff;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-start;
+  padding: 36px;
+}
+
+.app-root .ar video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 50%;
+  transition: opacity 0.45s;
+}
+
+.app-root .ar video.fo {
+  opacity: 0;
+}
+
+.app-root .ar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(7, 11, 9, 0.72), rgba(7, 11, 9, 0) 30%),
+              radial-gradient(ellipse at center, transparent 58%, rgba(7, 11, 9, 0.5));
+}
+
+.app-root .aq {
+  position: relative;
+  z-index: 2;
+}
+
+.app-root .aq h2 {
+  font-family: "Inter Tight", Inter, sans-serif;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+  font-size: clamp(26px, 2.6vw, 38px);
+  max-width: 9ch;
+  line-height: 1.02;
+  color: #ffffff;
+}
+
+.app-root .aq h2 em {
+  font: italic 400 1.05em "Instrument Serif", Georgia, serif;
+  letter-spacing: -0.01em;
+  color: #ffffff;
+}
+
+.app-root .bl {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  overflow-x: auto;
+  padding: 6px 2px 14px;
+  margin-top: 16px;
+}
+
+.app-root .blk {
+  min-width: 150px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  font-size: 12px;
+  transition: all 0.5s;
+  position: relative;
+}
+
+.app-root .blk b {
+  display: block;
+  font-size: 14px;
+  margin-bottom: 8px;
+}
+
+.app-root .blk .mono {
+  display: block;
+  color: var(--mut);
+}
+
+.app-root .blk.bad {
+  background: var(--badt);
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.app-root .blk.bad .mono {
+  color: var(--bad);
+}
+
+.app-root .hm {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.app-root .hi2 {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  transition: all 0.4s;
+}
+
+.app-root .hi2 .d {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--line);
+  color: var(--mut);
+  font-size: 13px;
+  flex: none;
+  transition: all 0.4s;
+}
+
+.app-root .hi2 small {
+  display: block;
+  color: var(--mut);
+}
+
+.app-root .hi2.run .d {
+  border: 3px solid var(--line);
+  border-top-color: var(--acc);
+  background: none;
+  animation: app-rot 0.8s linear infinite;
+  color: transparent;
+}
+
+.app-root .hi2.ok .d {
+  background: var(--tint);
+  color: var(--acc);
+}
+
+.app-root .hi2.no {
+  background: var(--badt);
+  box-shadow: inset 0 0 0 1px var(--bad);
+}
+
+.app-root .hi2.no .d {
+  background: var(--bad);
+  color: var(--bg);
+}
+
+@keyframes app-rot {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.app-root .sp {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--line);
+  border-top-color: var(--acc);
+  border-radius: 50%;
+  animation: app-rot 0.8s linear infinite;
+  margin: 40px auto;
+}
+
+.app-root .fl {
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--ambt);
+  margin-top: 12px;
+}
+
+.app-root .fl p {
+  margin: 6px 0 12px;
+  font-size: 15px;
+}
+
+.app-root .fl .row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.app-root .fl input {
+  margin: 0;
+  flex: 1;
+  min-width: 140px;
+  padding: 10px 14px;
+  font-size: 14px;
+}
+
+.app-root .sw {
+  width: 46px;
+  height: 26px;
+  border-radius: 99px;
+  background: var(--line);
+  border: 0;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.3s;
+  flex: none;
+}
+
+.app-root .sw::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg2);
+  transition: transform 0.3s;
+}
+
+.app-root .sw.on {
+  background: var(--acc);
+}
+
+.app-root .sw.on::after {
+  transform: translateX(20px);
+}
+
+.app-root .md {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(8, 10, 9, 0.55);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: app-fi 0.3s;
+}
+
+@keyframes app-fi {
+  from {
+    opacity: 0;
+  }
+}
+
+.app-root .mc {
+  width: 100%;
+  max-width: 460px;
+  max-height: 92vh;
+  overflow: auto;
+  background: var(--bg2);
+  border-radius: 28px;
+  padding: 28px;
+  border: 1px solid var(--line);
+  animation: app-up 0.5s both cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.app-root .mc h3 {
+  font-size: 26px;
+  margin-bottom: 16px;
+}
+
+.app-root .pre {
+  position: relative;
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+}
+
+.app-root .pre span {
+  position: absolute;
+  left: 16px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--mut);
+  pointer-events: none;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  user-select: none;
+}
+
+.app-root .pre input {
+  margin-top: 0;
+  padding-left: 38px;
+}
+
+.app-root .rv2 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+
+.app-root .rv2 span {
+  color: var(--mut);
+}
+
+.app-root .rv2 b {
+  font-weight: 500;
+  text-align: right;
+  word-break: break-all;
+}
+
+.app-root .res {
+  text-align: center;
+  padding: 8px 0 4px;
+}
+
+.app-root .res .chip {
+  font-size: 13px;
+  padding: 7px 16px;
+}
+
+.app-root .res h3 {
+  margin: 16px 0 4px;
+  font-size: 36px;
+}
+
+.app-root .mrow {
+  display: flex;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.app-root .mrow .btn {
+  flex: 1;
+}
+
+.app-root .ts {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + 76px);
+  right: 16px;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+  width: calc(100% - 32px);
+}
+
+.app-root .t {
+  background: var(--fg);
+  color: var(--bg);
+  padding: 14px 16px;
+  border-radius: 16px;
+  font-size: 14px;
+  animation: app-up 0.5s both;
+  box-shadow: 0 20px 40px -12px rgba(0, 0, 0, 0.4);
+}
+
+.app-root .t.e {
+  background: var(--bad);
+  color: #fff;
+}
+
+.app-root .t code {
+  display: block;
+  font: 12px/1.5 "JetBrains Mono", monospace;
+  opacity: 0.85;
+  margin-top: 6px;
+  word-break: break-all;
+}
+
+@media (max-width: 900px) {
+  .app-root .tabs,
+  .app-root .rt .chip {
+    display: none;
+  }
+  .app-root .bb {
+    display: flex;
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    z-index: 40;
+    background: color-mix(in srgb, var(--bg2) 90%, transparent);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-radius: 99px;
+    padding: 6px;
+    box-shadow: 0 10px 40px -10px rgba(0, 0, 0, 0.35), 0 0 0 1px var(--line);
+  }
+  .app-root .bb a,
+  .app-root .bb button {
+    flex: 1;
+    text-align: center;
+    padding: 12px 4px;
+    border-radius: 99px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--mut);
+    background: transparent;
+    border: 0;
+    text-decoration: none;
+  }
+  .app-root .bb a.on,
+  .app-root .bb button.on {
+    background: var(--fg);
+    color: var(--bg);
+  }
+  .app-root .kpi {
+    grid-template-columns: 1fr 1fr;
+  }
+  .app-root .kpi > div:nth-child(2) {
+    border-right: 0;
+  }
+  .app-root .kpi > div:nth-child(-n + 2) {
+    border-bottom: 1px solid var(--line);
+  }
+  .app-root .g2 {
+    grid-template-columns: 1fr;
+  }
+  .app-root .tr {
+    grid-template-columns: 1.6fr 1fr;
+  }
+  .app-root .tr .x {
+    display: none;
+  }
+  .app-root .view {
+    padding-bottom: 120px;
+  }
+  .app-root .hm {
+    grid-template-columns: 1fr;
+  }
+  .app-root .auth {
+    grid-template-columns: 1fr;
+  }
+  .app-root .ar {
+    display: none;
+  }
+  .app-root .al {
+    padding: 24px;
+  }
+  .app-root .wrap {
+    padding: 0 16px;
+  }
+  .app-root .chart {
+    gap: 5px;
+    height: 200px;
+  }
+  .app-root .ax {
+    gap: 5px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-root * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
