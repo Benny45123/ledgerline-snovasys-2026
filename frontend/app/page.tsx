@@ -213,7 +213,7 @@ export default function Home() {
               </svg>
             </button>
 
-            <a className="btn" href="#statement">
+            <a className="btn" href="/app">
               Open app
             </a>
           </div>
@@ -697,8 +697,8 @@ export default function Home() {
               </span>
             </span>
           </h2>
-          <a className="btn" href="#top">
-            Request a demo
+          <a className="btn" href="/app">
+            Launch app
           </a>
         </div>
       </div>
