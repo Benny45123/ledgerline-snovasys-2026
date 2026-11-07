@@ -55,7 +55,9 @@ def get_account_statement(
                 j.request_id,
                 u.id AS user_id,
                 u.email AS user_email,
-                COALESCE(dest_acc.number, src_acc.number, 'EXTERNAL') AS counterparty_number
+                COALESCE(dest_acc.number, src_acc.number, 'EXTERNAL') AS counterparty_number,
+                encode(e.prev_hash, 'hex') AS prev_hash,
+                encode(e.entry_hash, 'hex') AS entry_hash
             FROM ledger_entries e
             JOIN journals j ON e.journal_id = j.id
             JOIN users u ON j.initiated_by = u.id
@@ -79,7 +81,9 @@ def get_account_statement(
                 r.request_id,
                 u.id AS user_id,
                 u.email AS user_email,
-                COALESCE(c_acc.number, 'EXTERNAL') AS counterparty_number
+                COALESCE(c_acc.number, 'EXTERNAL') AS counterparty_number,
+                encode(r.prev_hash, 'hex') AS prev_hash,
+                encode(r.entry_hash, 'hex') AS entry_hash
             FROM refused_attempts r
             JOIN users u ON r.initiated_by = u.id
             LEFT JOIN accounts c_acc ON r.counterparty_account_id = c_acc.id
@@ -115,6 +119,8 @@ def get_account_statement(
                 journal_id=row.journal_id,
                 reason_code=row.reason_code,
                 request_id=row.request_id,
+                prev_hash=row.prev_hash,
+                entry_hash=row.entry_hash,
             )
         )
 
@@ -127,5 +133,7 @@ def get_account_statement(
         overdraft_limit=account.overdraft_limit,
         status=account.status,
         items=items,
+        has_more=has_more,
+        next_after=next_cursor,
         next_cursor=next_cursor,
     )

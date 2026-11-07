@@ -1,0 +1,1731 @@
+"use client";
+
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import "./app.css";
+import {
+  api,
+  User,
+  Account,
+  StatementItem,
+  AuditVerification,
+  ReviewFlag,
+  ApiError,
+  setToken,
+} from "@/lib/api";
+import { formatPaise, parseRupeesToPaise } from "@/lib/money";
+
+interface Toast {
+  id: string;
+  message: string;
+  isError?: boolean;
+  detail?: string;
+}
+
+type TabType = "dashboard" | "statement" | "audit" | "admin";
+type MoveType = "transfer" | "deposit" | "withdraw";
+type ModalStep = "form" | "review" | "busy" | "done";
+
+export default function AppPage() {
+  // Theme state
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  // Auth & Session
+  const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
+  const [user, setUser] = useState<User | null>(null);
+  const [currentTab, setCurrentTab] = useState<TabType>("dashboard");
+  const [authEmail, setAuthEmail] = useState(DEMO ? "holder1@ledgerline.internal" : "");
+  const [authPassword, setAuthPassword] = useState(DEMO ? "DemoPassword123!" : "");
+  const [authRole, setAuthRole] = useState<"holder" | "admin" | "auditor">("holder");
+  const [loginLoading, setLoginLoading] = useState(false);
+
+  // Video State & Seamless Looping
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [videoFade, setVideoFade] = useState(false);
+
+  useEffect(() => {
+    if (!user && videoRef.current) {
+      videoRef.current.muted = true;
+      const rm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!rm) {
+        videoRef.current.play().catch(() => {});
+      }
+    }
+  }, [user]);
+
+  const handleVideoTimeUpdate = () => {
+    const v = videoRef.current;
+    if (v && v.duration) {
+      if (v.currentTime > v.duration - 0.45) {
+        setVideoFade(true);
+      } else if (v.currentTime < 0.45) {
+        setVideoFade(false);
+      }
+    }
+  };
+
+  const handleVideoEnded = () => {
+    if (typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      return;
+    }
+    const v = videoRef.current;
+    if (v) {
+      v.currentTime = 0;
+      v.play().catch(() => {});
+      setTimeout(() => {
+        setVideoFade(false);
+      }, 80);
+    }
+  };
+
+  // Ledger & Account Data
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [activeAccount, setActiveAccount] = useState<Account | null>(null);
+  const [statements, setStatements] = useState<StatementItem[]>([]);
+  const [statementFilter, setStatementFilter] = useState<"all" | "posting" | "refusal">("all");
+  const [statementHasMore, setStatementHasMore] = useState(false);
+  const [statementNextAfter, setStatementNextAfter] = useState<number | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [dataLoading, setDataLoading] = useState(false);
+
+  // Move Money Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalStep, setModalStep] = useState<ModalStep>("form");
+  const [moveType, setMoveType] = useState<MoveType>("transfer");
+  const [toAccountNum, setToAccountNum] = useState("");
+  const [amountRupees, setAmountRupees] = useState("");
+  const [memo, setMemo] = useState("");
+  const [idempotencyKey, setIdempotencyKey] = useState<string>("");
+  const [moveAttempted, setMoveAttempted] = useState(false);
+  const [moveError, setMoveError] = useState<string | null>(null);
+  const [moveResult, setMoveResult] = useState<{
+    status: "posted" | "replayed" | "refused";
+    journalId?: string;
+    code?: string;
+    balanceAfter?: number;
+    amountPaise?: number;
+  } | null>(null);
+
+  // Audit State
+  const [auditRunning, setAuditRunning] = useState(false);
+  const [auditResult, setAuditResult] = useState<AuditVerification | null>(null);
+  const [simulatedTamper, setSimulatedTamper] = useState(false);
+
+  // Admin State
+  const [reviewFlags, setReviewFlags] = useState<ReviewFlag[]>([]);
+  const [adjAccount, setAdjAccount] = useState<string>("");
+  const [adjAmount, setAdjAmount] = useState<string>("-250.00");
+  const [adjReason, setAdjReason] = useState<string>("Correction of bank drift");
+  const [flagExplanations, setFlagExplanations] = useState<Record<number, string>>({});
+
+  // Toasts
+  const [toasts, setToasts] = useState<Toast[]>([]);
+
+  // Add toast notification
+  const addToast = useCallback((message: string, isError = false, detail?: string) => {
+    const id = `t-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+    setToasts((prev) => [...prev, { id, message, isError, detail }]);
+    setTimeout(() => {
+      setToasts((prev) => prev.filter((t) => t.id !== id));
+    }, 5500);
+  }, []);
+
+  const addErrorToast = useCallback(
+    (err: unknown) => {
+      if (err instanceof ApiError) {
+        let displayMessage = err.message;
+        if (
+          err.code === "invalid_destination" ||
+          err.message.toLowerCase().includes("frozen") ||
+          err.message.toLowerCase().includes("destination account is invalid")
+        ) {
+          displayMessage = "The account is frozen by an administrator (or invalid/closed).";
+        } else if (err.code === "account_frozen") {
+          displayMessage = "This account is currently frozen by an administrator.";
+        }
+        addToast(
+          displayMessage,
+          true,
+          JSON.stringify({ code: err.code, message: err.message, request_id: err.requestId })
+        );
+      } else if (err instanceof Error) {
+        addToast(
+          err.message,
+          true,
+          JSON.stringify({ code: "error", message: err.message, request_id: "req-local" })
+        );
+      } else {
+        addToast(
+          "An unexpected error occurred.",
+          true,
+          JSON.stringify({ code: "unknown_error", message: String(err), request_id: "req-local" })
+        );
+      }
+    },
+    [addToast]
+  );
+
+  // Initialize theme
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("ll-theme") as "light" | "dark" | null;
+      if (
+        saved === "dark" ||
+        (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches)
+      ) {
+        setTheme("dark");
+        document.documentElement.setAttribute("data-theme", "dark");
+      } else {
+        setTheme("light");
+        document.documentElement.setAttribute("data-theme", "light");
+      }
+    } catch {}
+  }, []);
+
+  const toggleTheme = () => {
+    const next = theme === "dark" ? "light" : "dark";
+    setTheme(next);
+    document.documentElement.setAttribute("data-theme", next);
+    try {
+      localStorage.setItem("ll-theme", next);
+    } catch {}
+  };
+
+  // Hydrate session on load
+  const loadUserData = useCallback(async () => {
+    try {
+      setDataLoading(true);
+      const currentUser = await api.getMe();
+      setUser(currentUser);
+
+      const accs = await api.getAccounts();
+      setAccounts(accs);
+
+      if (accs.length > 0) {
+        const primary = accs[0] ?? null;
+        setActiveAccount(primary);
+        if (primary) {
+          const stm = await api.getStatement(primary.id, { limit: 20 });
+          setStatements(stm.items);
+          setStatementHasMore(Boolean(stm.has_more));
+          setStatementNextAfter(stm.next_after ?? stm.next_cursor ?? null);
+          setAdjAccount(primary.number);
+        }
+      }
+
+      if (currentUser.role === "admin" || currentUser.role === "auditor") {
+        try {
+          const flags = await api.getReviewFlags();
+          setReviewFlags(flags);
+        } catch {}
+      }
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.statusCode === 401) {
+        // Session expired or unauthenticated
+        setUser(null);
+        setToken(null);
+        setCurrentTab("dashboard");
+      } else {
+        addErrorToast(err);
+      }
+    } finally {
+      setDataLoading(false);
+    }
+  }, [addErrorToast]);
+
+  useEffect(() => {
+    loadUserData();
+  }, [loadUserData]);
+
+  // Refresh active account statements
+  const refreshStatements = useCallback(
+    async (accId?: string) => {
+      const targetId = accId || activeAccount?.id;
+      if (!targetId) return;
+      try {
+        const stm = await api.getStatement(targetId, { limit: 20 });
+        if (!accId || (activeAccount && targetId === activeAccount.id)) {
+          setStatements(stm.items);
+          setStatementHasMore(Boolean(stm.has_more));
+          setStatementNextAfter(stm.next_after ?? stm.next_cursor ?? null);
+        }
+
+        // Update balance on active account
+        const updatedAcc = await api.getAccount(targetId);
+        if (activeAccount && targetId === activeAccount.id) {
+          setActiveAccount(updatedAcc);
+        }
+        setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
+      } catch (e) {
+        addErrorToast(e);
+      }
+    },
+    [activeAccount, addErrorToast]
+  );
+
+  const handleSelectAccount = async (acc: Account) => {
+    setActiveAccount(acc);
+    setAdjAccount(acc.number);
+    await refreshStatements(acc.id);
+  };
+
+  // Keyset Load More
+  const handleLoadMoreStatements = async () => {
+    if (!activeAccount || !statementNextAfter || loadingMore) return;
+    try {
+      setLoadingMore(true);
+      const res = await api.getStatement(activeAccount.id, {
+        after: statementNextAfter,
+        limit: 20,
+      });
+      setStatements((prev) => [...prev, ...res.items]);
+      setStatementHasMore(Boolean(res.has_more));
+      setStatementNextAfter(res.next_after ?? res.next_cursor ?? null);
+    } catch (err) {
+      addErrorToast(err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
+  // Handle Login
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoginLoading(true);
+      const res = await api.login(authEmail, authPassword);
+      setUser(res.user);
+      addToast(`Signed in as ${res.user.email} (${res.user.role})`);
+      await loadUserData();
+    } catch (err) {
+      addErrorToast(err);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
+  // Handle Logout
+  const handleLogout = async () => {
+    try {
+      await api.logout();
+    } catch {}
+    setUser(null);
+    setAccounts([]);
+    setActiveAccount(null);
+    setStatements([]);
+    setStatementHasMore(false);
+    setStatementNextAfter(null);
+    setCurrentTab("dashboard");
+    setReviewFlags([]);
+    setFlagExplanations({});
+    setAuditResult(null);
+    setSimulatedTamper(false);
+    setIsModalOpen(false);
+    setMoveResult(null);
+    setMoveAttempted(false);
+    setMoveError(null);
+    addToast("Logged out successfully.");
+  };
+
+  // Move Money Modal flow
+  const openMoveModal = (type: MoveType) => {
+    setMoveType(type);
+    setModalStep("form");
+    setIsModalOpen(true);
+    setMoveResult(null);
+    setMoveAttempted(false);
+    setMoveError(null);
+    setAmountRupees("");
+    setMemo("");
+    setToAccountNum("");
+    setIdempotencyKey(crypto.randomUUID ? crypto.randomUUID() : `idemp-${Date.now()}`);
+  };
+
+  const handleReviewMove = () => {
+    const paise = parseRupeesToPaise(amountRupees);
+    if (!paise || paise <= 0) {
+      addToast(
+        "Enter a valid amount in rupees greater than zero.",
+        true,
+        '{"code":"validation_error","message":"Amount must be strictly positive.","request_id":"req-val"}'
+      );
+      return;
+    }
+    if (moveType === "transfer") {
+      const dest = toAccountNum.trim().toUpperCase();
+      if (!dest || (activeAccount && dest === activeAccount.number)) {
+        addToast(
+          "Destination account number does not exist or is invalid.",
+          true,
+          '{"code":"invalid_destination","message":"Destination account is invalid.","request_id":"req-dest"}'
+        );
+        return;
+      }
+    }
+    setModalStep("review");
+  };
+
+  const handleExecuteMove = async () => {
+    if (!activeAccount) return;
+    const paise = parseRupeesToPaise(amountRupees);
+    if (!paise) return;
+
+    setModalStep("busy");
+
+    try {
+      if (moveType === "deposit") {
+        const { result, isReplayed } = await api.deposit(
+          activeAccount.id,
+          paise,
+          memo,
+          idempotencyKey
+        );
+        setMoveResult({
+          status: isReplayed ? "replayed" : "posted",
+          journalId: result.journal_id,
+          balanceAfter: result.entry.balance_after,
+          amountPaise: paise,
+        });
+        setModalStep("done");
+        await refreshStatements();
+      } else if (moveType === "withdraw") {
+        const { result, isReplayed } = await api.withdraw(
+          activeAccount.id,
+          paise,
+          memo,
+          idempotencyKey
+        );
+        setMoveResult({
+          status: isReplayed ? "replayed" : "posted",
+          journalId: result.journal_id,
+          balanceAfter: result.entry.balance_after,
+          amountPaise: paise,
+        });
+        setModalStep("done");
+        await refreshStatements();
+      } else if (moveType === "transfer") {
+        const { result, isReplayed } = await api.transfer(
+          activeAccount.id,
+          toAccountNum.trim().toUpperCase(),
+          paise,
+          memo,
+          idempotencyKey
+        );
+        setMoveResult({
+          status: isReplayed ? "replayed" : "posted",
+          journalId: result.journal_id,
+          balanceAfter: result.entry.balance_after,
+          amountPaise: paise,
+        });
+        setModalStep("done");
+        await refreshStatements();
+      }
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.statusCode === 409) {
+        // Business refusal recorded safely in ledger
+        setMoveResult({
+          status: "refused",
+          code: err.code,
+          amountPaise: paise,
+        });
+        setModalStep("done");
+        await refreshStatements();
+        addToast(err.message, true, `{"code":"${err.code}","request_id":"${err.requestId}"}`);
+      } else {
+        let errorNotice = "Outcome unconfirmed: retry same request safely with identical Idempotency-Key.";
+        if (err instanceof ApiError) {
+          if (
+            err.code === "invalid_destination" ||
+            err.message.toLowerCase().includes("frozen") ||
+            err.message.toLowerCase().includes("destination account is invalid")
+          ) {
+            errorNotice = "The account is frozen by an administrator (or invalid/closed). Movements cannot be processed.";
+          } else if (err.code === "account_frozen") {
+            errorNotice = "This account is currently frozen by an administrator.";
+          }
+        }
+        setMoveError(errorNotice);
+        setMoveAttempted(true);
+        setModalStep("review");
+        addErrorToast(err);
+      }
+    }
+  };
+
+  // Run Cryptographic Verification
+  const handleRunVerification = async () => {
+    try {
+      setAuditRunning(true);
+      const res = await api.verifyAudit();
+      setAuditResult(res);
+      addToast(
+        res.verified
+          ? "Cryptographic verification passed: All 4 invariants intact."
+          : `Audit check identified ${res.discrepancies.length} discrepancy record(s).`,
+        !res.verified
+      );
+    } catch (err) {
+      addErrorToast(err);
+    } finally {
+      setAuditRunning(false);
+    }
+  };
+
+  // Freeze / Unfreeze
+  const handleToggleFreeze = async (acc: Account) => {
+    try {
+      if (acc.status === "frozen") {
+        await api.unfreezeAccount(acc.id);
+        addToast(`Account ${acc.number} unfrozen.`);
+      } else {
+        await api.freezeAccount(acc.id);
+        addToast(`Account ${acc.number} frozen.`);
+      }
+      const accs = await api.getAccounts();
+      setAccounts(accs);
+      if (activeAccount?.id === acc.id) {
+        const updated = accs.find((a) => a.id === acc.id) || null;
+        setActiveAccount(updated);
+      }
+    } catch (err) {
+      addErrorToast(err);
+    }
+  };
+
+  // Post Admin Adjustment against SUSPENSE
+  const handlePostAdjustment = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const paise = parseRupeesToPaise(adjAmount);
+    if (!paise) {
+      addToast(
+        "Valid signed rupee amount is required.",
+        true,
+        '{"code":"validation_error","message":"Amount must be numeric.","request_id":"req-adj"}'
+      );
+      return;
+    }
+    if (!adjReason.trim()) {
+      addToast(
+        "A mandatory reason is required for adjustments against SUSPENSE.",
+        true,
+        '{"code":"reason_required","message":"Admin adjustment mandates an explanation.","request_id":"req-adj"}'
+      );
+      return;
+    }
+    const target = accounts.find((a) => a.number === adjAccount);
+    if (!target) {
+      addToast("Selected account not found.", true);
+      return;
+    }
+
+    try {
+      const key = crypto.randomUUID ? crypto.randomUUID() : `adj-${Date.now()}`;
+      await api.postAdjustment(target.id, paise, adjReason, key);
+      addToast(`Adjustment of ${formatPaise(paise)} posted against SYS-SUSPENSE.`);
+      setAdjReason("");
+      // Refresh accounts for target only
+      const updatedAcc = await api.getAccount(target.id);
+      setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
+      // Only refresh statements if target is currently active
+      if (activeAccount && target.id === activeAccount.id) {
+        setActiveAccount(updatedAcc);
+        await refreshStatements(target.id);
+      }
+    } catch (err) {
+      addErrorToast(err);
+    }
+  };
+
+  // AI Review Decision
+  const handleReviewDecision = async (flagId: number, decision: "approved" | "dismissed") => {
+    const reason = flagExplanations[flagId]?.trim();
+    if (!reason) {
+      addToast(
+        "A written explanation is required to record this review decision.",
+        true,
+        '{"code":"explanation_required","message":"Audit trail requires an explanation.","request_id":"req-rev"}'
+      );
+      return;
+    }
+    try {
+      await api.decideReviewFlag(flagId, decision, reason);
+      addToast(`Decision "${decision}" committed to append-only review decisions.`);
+      setReviewFlags((prev) => prev.filter((f) => f.id !== flagId));
+    } catch (err) {
+      addErrorToast(err);
+    }
+  };
+
+  // Filtered statements
+  const filteredStatements = useMemo(() => {
+    if (statementFilter === "all") return statements;
+    if (statementFilter === "posting") return statements.filter((s) => s.type === "posting");
+    return statements.filter((s) => s.type === "refusal");
+  }, [statements, statementFilter]);
+
+  // Computed KPI metrics from statement
+  const { totalCredits, totalDebits, refusalCount } = useMemo(() => {
+    let cr = 0;
+    let db = 0;
+    let rf = 0;
+    for (const item of statements) {
+      if (item.type === "refusal") {
+        rf++;
+      } else if (item.amount > 0) {
+        cr += item.amount;
+      } else if (item.amount < 0) {
+        db += Math.abs(item.amount);
+      }
+    }
+    return { totalCredits: cr, totalDebits: db, refusalCount: rf };
+  }, [statements]);
+
+  // Allowed tabs per role
+  const allowedTabs: TabType[] = useMemo(() => {
+    if (!user) return ["dashboard"];
+    if (user.role === "holder") return ["dashboard", "statement"];
+    if (user.role === "auditor") return ["dashboard", "statement", "audit"];
+    return ["dashboard", "statement", "audit", "admin"];
+  }, [user]);
+
+  // Clamp currentTab to allowedTabs whenever user or allowedTabs changes
+  useEffect(() => {
+    if (!allowedTabs.includes(currentTab)) {
+      setCurrentTab("dashboard");
+    }
+  }, [allowedTabs, currentTab]);
+
+  // Select demo role
+  const selectDemoRole = (role: "holder" | "admin" | "auditor") => {
+    if (!DEMO) return;
+    setAuthRole(role);
+    setAuthEmail(`${role === "holder" ? "holder1" : role}@ledgerline.internal`);
+    setAuthPassword("DemoPassword123!");
+  };
+
+  // Map real AuditVerification report to 4-point health matrix checks
+  const auditChecks = useMemo(() => {
+    const discrepancies = auditResult?.discrepancies ?? [];
+    const hashChainDiscrepancies = discrepancies.filter((d) =>
+      ["sequence_continuity", "prev_hash_link", "entry_hash_integrity"].includes(d.check)
+    );
+    const balanceCacheDiscrepancies = discrepancies.filter((d) =>
+      ["balance_cache_match", "empty_account_balance"].includes(d.check)
+    );
+    const zeroSumDiscrepancies = discrepancies.filter((d) => d.check === "journal_zero_sum");
+    const globalConservationDiscrepancies = discrepancies.filter(
+      (d) => d.check === "global_conservation"
+    );
+
+    return [
+      {
+        title: "SHA-256 hash chain",
+        sub: "prev_hash → entry_hash",
+        failed: simulatedTamper || (auditResult !== null && hashChainDiscrepancies.length > 0),
+        detail: simulatedTamper
+          ? "Simulated alteration on Block 2 (demo overlay)"
+          : hashChainDiscrepancies.length > 0
+          ? hashChainDiscrepancies.map((d) => d.message).join("; ")
+          : undefined,
+      },
+      {
+        title: "Balance cache parity",
+        sub: "balance == balance_after",
+        failed: auditResult !== null && balanceCacheDiscrepancies.length > 0,
+        detail: balanceCacheDiscrepancies.length > 0
+          ? balanceCacheDiscrepancies.map((d) => d.message).join("; ")
+          : undefined,
+      },
+      {
+        title: "Double-entry zero-sum",
+        sub: "journal entries sum to 0",
+        failed: auditResult !== null && zeroSumDiscrepancies.length > 0,
+        detail: zeroSumDiscrepancies.length > 0
+          ? zeroSumDiscrepancies.map((d) => d.message).join("; ")
+          : undefined,
+      },
+      {
+        title: "Global conservation",
+        sub: "sum of all accounts = 0",
+        failed: auditResult !== null && globalConservationDiscrepancies.length > 0,
+        detail: globalConservationDiscrepancies.length > 0
+          ? globalConservationDiscrepancies.map((d) => d.message).join("; ")
+          : undefined,
+      },
+    ];
+  }, [auditResult, simulatedTamper]);
+
+  return (
+    <div className="app-root" data-theme={theme}>
+      {/* Toast Overlay */}
+      <div className="ts">
+        {toasts.map((t) => (
+          <div key={t.id} className={`t ${t.isError ? "e" : ""}`}>
+            <b>{t.message}</b>
+            {t.detail && <code>{t.detail}</code>}
+          </div>
+        ))}
+      </div>
+
+      {/* ====================================================================
+          1. AUTH SCREEN (Matching reference app.html)
+          ==================================================================== */}
+      {!user ? (
+        <div className="auth">
+          <div className="al">
+            <div className="fo">
+              <a className="logo" style={{ fontSize: "20px", color: "var(--fg)" }} href="/">
+                LedgerLine
+              </a>
+              <button
+                className="tg"
+                onClick={toggleTheme}
+                aria-label="Toggle theme"
+              >
+                <svg
+                  className="su"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                >
+                  <circle cx="12" cy="12" r="4" />
+                  <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                </svg>
+                <svg
+                  className="mo"
+                  width="18"
+                  height="18"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinejoin="round"
+                >
+                  <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                </svg>
+              </button>
+            </div>
+
+            <form className="af c" onSubmit={handleLogin}>
+              <h1>
+                Sign in to <em>your ledger.</em>
+              </h1>
+              {DEMO ? (
+                <>
+                  <p className="sub">Pick a demo role to fill the credentials.</p>
+                  <div className="seg">
+                    <button
+                      type="button"
+                      className={authRole === "holder" ? "on" : ""}
+                      onClick={() => selectDemoRole("holder")}
+                    >
+                      Holder
+                    </button>
+                    <button
+                      type="button"
+                      className={authRole === "admin" ? "on" : ""}
+                      onClick={() => selectDemoRole("admin")}
+                    >
+                      Admin
+                    </button>
+                    <button
+                      type="button"
+                      className={authRole === "auditor" ? "on" : ""}
+                      onClick={() => selectDemoRole("auditor")}
+                    >
+                      Auditor
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <p className="sub">Enter your credentials to access the ledger.</p>
+              )}
+
+              <label>
+                Email
+                <input
+                  type="email"
+                  value={authEmail}
+                  onChange={(e) => setAuthEmail(e.target.value)}
+                  required
+                />
+              </label>
+
+              <label>
+                Password
+                <input
+                  type="password"
+                  value={authPassword}
+                  onChange={(e) => setAuthPassword(e.target.value)}
+                  required
+                />
+              </label>
+
+              <button className="btn w" type="submit" disabled={loginLoading}>
+                {loginLoading ? "Authenticating…" : "Sign in"}
+              </button>
+            </form>
+
+            <div className="fo" />
+          </div>
+
+          <div className="ar">
+            <video
+              ref={videoRef}
+              id="lv"
+              className={videoFade ? "fo" : ""}
+              muted
+              playsInline
+              preload="auto"
+              poster="/app-poster.jpg"
+              aria-hidden="true"
+              src="/app-hero.mp4"
+              onTimeUpdate={handleVideoTimeUpdate}
+              onEnded={handleVideoEnded}
+            />
+            <div className="aq">
+              <h2>
+                Every rupee, <em>accounted for.</em>
+              </h2>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* ====================================================================
+            2. APPLICATION SHELL & DASHBOARD
+            ==================================================================== */
+        <>
+          <nav className="nv">
+            <div className="wrap">
+              <a className="logo" href="/">
+                LedgerLine
+              </a>
+
+              <div className="tabs">
+                {allowedTabs.map((tab) => (
+                  <button
+                    key={tab}
+                    className={currentTab === tab ? "on" : ""}
+                    onClick={() => setCurrentTab(tab)}
+                  >
+                    {tab[0]?.toUpperCase() + tab.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              <div className="rt">
+                <span className="chip n">{user.role}</span>
+                <button
+                  className="tg"
+                  onClick={toggleTheme}
+                  aria-label="Toggle theme"
+                >
+                  <svg
+                    className="su"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+                  </svg>
+                  <svg
+                    className="mo"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+                  </svg>
+                </button>
+                <button className="btn o sm" onClick={handleLogout}>
+                  Sign out
+                </button>
+              </div>
+            </div>
+          </nav>
+
+          <main className="wrap view">
+            {/* VIEW A: DASHBOARD */}
+            {currentTab === "dashboard" && (
+              <>
+                <div className="hd c">
+                  <div>
+                    <h2>Overview</h2>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                      <span style={{ fontSize: "13px", color: "var(--mut)" }}>Account:</span>
+                      {accounts.length > 1 ? (
+                        <select
+                          value={activeAccount?.id}
+                          onChange={(e) => {
+                            const selected = accounts.find((a) => a.id === e.target.value);
+                            if (selected) handleSelectAccount(selected);
+                          }}
+                          style={{
+                            background: "var(--card)",
+                            color: "var(--fg)",
+                            border: "1px solid var(--border)",
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            fontFamily: "var(--mono)",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {accounts.map((acc) => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name} ({acc.number}) · {formatPaise(acc.balance)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p style={{ margin: 0 }}>
+                          Account {activeAccount?.number || "None"} · all figures from the server ledger
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {user.role !== "auditor" && (
+                    <button className="btn" onClick={() => openMoveModal("transfer")}>
+                      Move money
+                    </button>
+                  )}
+                </div>
+
+                {/* KPI Matrix */}
+                <div className="kpi c" style={{ "--i": 1 } as React.CSSProperties}>
+                  <div>
+                    <small>Balance</small>
+                    <b className="mono">
+                      {formatPaise(activeAccount?.balance ?? 0)}
+                    </b>
+                  </div>
+                  <div>
+                    <small>Credits received</small>
+                    <b className="mono" style={{ color: "var(--acc)" }}>
+                      +{formatPaise(totalCredits)}
+                    </b>
+                  </div>
+                  <div>
+                    <small>Refused attempts</small>
+                    <b className="mono">{refusalCount}</b>
+                  </div>
+                  <div>
+                    <small>Debits sent</small>
+                    <b className="mono" style={{ color: "var(--mut)" }}>
+                      -{formatPaise(totalDebits)}
+                    </b>
+                  </div>
+                </div>
+
+                <div className="g2">
+                  {/* Movement Chart */}
+                  <div className="card c" style={{ "--i": 2 } as React.CSSProperties}>
+                    <h3>Net movement</h3>
+                    <small>Daily, last 12 days (illustrative)</small>
+                    <div className="chart">
+                      {[32, 48, 40, 61, 45, 38, 57, 72, 44, 52, 66, 49].map((v, i) => (
+                        <i
+                          key={`bar-${i}`}
+                          className={i === 7 ? "hi" : ""}
+                          style={
+                            {
+                              "--h": `${v}%`,
+                              "--i": i,
+                            } as React.CSSProperties
+                          }
+                        >
+                          <span className="tip">
+                            Nov {i + 1} · ₹{v}k
+                          </span>
+                        </i>
+                      ))}
+                    </div>
+                    <div className="ax">
+                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((x) => (
+                        <span key={`ax-${x}`}>{x}</span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Account Card */}
+                  <div className="c" style={{ "--i": 3 } as React.CSSProperties}>
+                    <div className="acct">
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <small className="mono">{activeAccount?.number || "ACC-0001-A"}</small>
+                        <span
+                          className={`chip ${
+                            activeAccount?.status === "frozen" ? "b" : ""
+                          }`}
+                        >
+                          {activeAccount?.status === "frozen" ? "Frozen" : "Active"}
+                        </span>
+                      </div>
+                      <div>
+                        <small>Available balance</small>
+                        <div className="big mono">
+                          {formatPaise(activeAccount?.balance ?? 0)}
+                        </div>
+                        <small>
+                          Overdraft limit {formatPaise(activeAccount?.overdraft_limit ?? 0)} · INR
+                        </small>
+                      </div>
+                      {user.role === "auditor" ? (
+                        <small>Read-only auditor access</small>
+                      ) : (
+                        <div className="acts">
+                          <button onClick={() => openMoveModal("deposit")}>Deposit</button>
+                          <button onClick={() => openMoveModal("withdraw")}>Withdraw</button>
+                          <button onClick={() => openMoveModal("transfer")}>Transfer</button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Activity Table */}
+                <div className="card c" style={{ "--i": 4 } as React.CSSProperties}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "12px",
+                    }}
+                  >
+                    <h3>Recent activity</h3>
+                    <button
+                      className="chip n"
+                      onClick={() => setCurrentTab("statement")}
+                      style={{ cursor: "pointer", border: 0 }}
+                    >
+                      View statement →
+                    </button>
+                  </div>
+
+                  <div className="tbl">
+                    <div className="tr h">
+                      <div>Entry</div>
+                      <div className="r">Amount</div>
+                      <div className="r x">Balance after</div>
+                      <div className="r x">Initiated by</div>
+                    </div>
+                    {statements.slice(0, 5).map((item) => {
+                      const isRefusal = item.type === "refusal";
+                      const isDebit = item.amount < 0;
+                      return (
+                        <div
+                          key={`recent-${item.account_seq}`}
+                          className={`tr ${isRefusal ? "rf" : ""}`}
+                        >
+                          <div>
+                            <b>
+                              {item.kind[0]?.toUpperCase() + item.kind.slice(1)}
+                            </b>{" "}
+                            {isRefusal ? (
+                              <span className="chip b">Refused · {item.reason_code}</span>
+                            ) : null}
+                            <small className="mono">
+                              #{item.account_seq} · {new Date(item.at).toLocaleDateString()}
+                            </small>
+                          </div>
+                          <div className="r">
+                            {isRefusal ? (
+                              <span className="mono">{formatPaise(item.amount)}</span>
+                            ) : (
+                              <span
+                                className={`mono ${isDebit ? "neg" : "pos"}`}
+                              >
+                                {isDebit ? "" : "+"}
+                                {formatPaise(item.amount)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="r x mono">
+                            {formatPaise(item.balance_after ?? item.balance_at_attempt ?? 0)}
+                          </div>
+                          <div className="r x">{item.initiated_by.email.split("@")[0]}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* VIEW B: STATEMENT */}
+            {currentTab === "statement" && (
+              <>
+                <div className="hd c">
+                  <div>
+                    <h2>Statement</h2>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px" }}>
+                      <span style={{ fontSize: "13px", color: "var(--mut)" }}>Account:</span>
+                      {accounts.length > 1 ? (
+                        <select
+                          value={activeAccount?.id}
+                          onChange={(e) => {
+                            const selected = accounts.find((a) => a.id === e.target.value);
+                            if (selected) handleSelectAccount(selected);
+                          }}
+                          style={{
+                            background: "var(--card)",
+                            color: "var(--fg)",
+                            border: "1px solid var(--border)",
+                            padding: "4px 8px",
+                            borderRadius: "6px",
+                            fontFamily: "var(--mono)",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {accounts.map((acc) => (
+                            <option key={acc.id} value={acc.id}>
+                              {acc.name} ({acc.number}) · overdraft {formatPaise(acc.overdraft_limit)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="mono" style={{ margin: 0 }}>
+                          {activeAccount?.number} · {activeAccount?.name} · overdraft{" "}
+                          {formatPaise(activeAccount?.overdraft_limit ?? 0)} ·{" "}
+                          <span className="chip">
+                            {activeAccount?.status === "frozen" ? "Frozen" : "Active"}
+                          </span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  {user.role !== "auditor" && (
+                    <button className="btn" onClick={() => openMoveModal("transfer")}>
+                      Move money
+                    </button>
+                  )}
+                </div>
+
+                <div className="card c" style={{ "--i": 1 } as React.CSSProperties}>
+                  <div className="seg">
+                    <button
+                      className={statementFilter === "all" ? "on" : ""}
+                      onClick={() => setStatementFilter("all")}
+                    >
+                      All
+                    </button>
+                    <button
+                      className={statementFilter === "posting" ? "on" : ""}
+                      onClick={() => setStatementFilter("posting")}
+                    >
+                      Postings
+                    </button>
+                    <button
+                      className={statementFilter === "refusal" ? "on" : ""}
+                      onClick={() => setStatementFilter("refusal")}
+                    >
+                      Refusals
+                    </button>
+                  </div>
+
+                  <div className="tbl">
+                    <div className="tr h">
+                      <div>Entry</div>
+                      <div className="r">Amount</div>
+                      <div className="r x">Balance after</div>
+                      <div className="r x">Initiated by</div>
+                    </div>
+                    {filteredStatements.map((item) => {
+                      const isRefusal = item.type === "refusal";
+                      const isDebit = item.amount < 0;
+                      return (
+                        <div
+                          key={`stmt-${item.account_seq}`}
+                          className={`tr ${isRefusal ? "rf" : ""}`}
+                        >
+                          <div>
+                            <b>
+                              {item.kind[0]?.toUpperCase() + item.kind.slice(1)}
+                            </b>{" "}
+                            {isRefusal ? (
+                              <span className="chip b">Refused · {item.reason_code}</span>
+                            ) : null}
+                            <small className="mono">
+                              #{item.account_seq} · {new Date(item.at).toLocaleString("en-IN")} ·{" "}
+                              {item.request_id}
+                            </small>
+                          </div>
+                          <div className="r">
+                            {isRefusal ? (
+                              <span className="mono">{formatPaise(item.amount)}</span>
+                            ) : (
+                              <span
+                                className={`mono ${isDebit ? "neg" : "pos"}`}
+                              >
+                                {isDebit ? "" : "+"}
+                                {formatPaise(item.amount)}
+                              </span>
+                            )}
+                          </div>
+                          <div className="r x mono">
+                            {formatPaise(item.balance_after ?? item.balance_at_attempt ?? 0)}
+                          </div>
+                          <div className="r x">{item.initiated_by.email.split("@")[0]}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {statementHasMore && (
+                    <div
+                      style={{
+                        display: "flex",
+                        justifyContent: "center",
+                        marginTop: "16px",
+                      }}
+                    >
+                      <button
+                        className="btn o sm"
+                        onClick={handleLoadMoreStatements}
+                        disabled={loadingMore}
+                      >
+                        {loadingMore ? "Loading…" : "Load more entries"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* VIEW C: AUDIT EXPLORER */}
+            {currentTab === "audit" && (
+              <>
+                <div className="hd c">
+                  <div>
+                    <h2>
+                      Audit <em>explorer</em>
+                    </h2>
+                    <p>Recompute every hash and check conservation, on demand.</p>
+                  </div>
+                  <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+                    <button
+                      className="btn o"
+                      onClick={() => {
+                        setSimulatedTamper((prev) => !prev);
+                        addToast(
+                          simulatedTamper
+                            ? "Restored real hash chain."
+                            : "Simulating database row alteration. Block 2 hash broken.",
+                          !simulatedTamper
+                        );
+                      }}
+                    >
+                      {simulatedTamper ? "Restore chain" : "Simulate tampering"}
+                    </button>
+                    <button
+                      className="btn"
+                      onClick={handleRunVerification}
+                      disabled={auditRunning}
+                    >
+                      {auditRunning ? "Running verification…" : "Run verification"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Hash Chain Blocks */}
+                <div className="card c" style={{ "--i": 1 } as React.CSSProperties}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "8px",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    <div>
+                      <h3>Hash chain</h3>
+                      <small>Each entry commits to the cryptographic hash of the one before it.</small>
+                    </div>
+                    {simulatedTamper && (
+                      <span className="chip b" style={{ fontSize: "11px" }}>
+                        Simulated alteration active (demo overlay)
+                      </span>
+                    )}
+                  </div>
+                  <div className="bl">
+                    {statements.slice(0, 5).map((item, idx) => {
+                      const isBad = simulatedTamper && idx === 1;
+                      const prevHash = item.prev_hash
+                        ? `${item.prev_hash.slice(0, 8)}…`
+                        : "00000000…";
+                      const entryHash = isBad
+                        ? "deadbeef (altered)"
+                        : item.entry_hash
+                        ? `${item.entry_hash.slice(0, 8)}…`
+                        : "pending…";
+                      return (
+                        <div
+                          key={`block-${item.account_seq}-${idx}`}
+                          className={`blk ${isBad ? "bad" : ""}`}
+                        >
+                          <b>
+                            #{item.account_seq} {isBad ? "· altered" : ""}
+                          </b>
+                          <span className="mono">prev {prevHash}</span>
+                          <span className="mono">hash {entryHash}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* 4-Point Health Matrix */}
+                <div
+                  className="card c"
+                  style={{ "--i": 2, marginTop: "18px" } as React.CSSProperties}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      flexWrap: "wrap",
+                      gap: "8px",
+                    }}
+                  >
+                    <div>
+                      <h3>Health matrix</h3>
+                      <small>Driven by mathematical reconciliation from /audit/verify</small>
+                    </div>
+                    <span
+                      className={`chip mono ${
+                        auditRunning
+                          ? "n"
+                          : simulatedTamper || (auditResult && !auditResult.verified)
+                          ? "b"
+                          : auditResult?.verified
+                          ? ""
+                          : "n"
+                      }`}
+                    >
+                      {auditRunning
+                        ? "running…"
+                        : simulatedTamper
+                        ? "is_valid: false (tamper simulation)"
+                        : auditResult
+                        ? `verified: ${auditResult.verified}`
+                        : "idle (click Run verification)"}
+                    </span>
+                  </div>
+
+                  <div className="hm">
+                    {auditChecks.map((check, i) => (
+                      <div
+                        key={`check-${i}`}
+                        className={`hi2 ${
+                          auditRunning ? "run" : check.failed ? "no" : "ok"
+                        }`}
+                      >
+                        <div className="d">{check.failed ? "✕" : "✓"}</div>
+                        <div>
+                          <b>{check.title}</b>
+                          <small>{check.detail || check.sub}</small>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* VIEW D: ADMIN OPERATIONS */}
+            {currentTab === "admin" && user.role === "admin" && (
+              <>
+                <div className="hd c">
+                  <div>
+                    <h2>Operations</h2>
+                    <p>Freeze accounts, adjust against suspense, review flags.</p>
+                  </div>
+                </div>
+
+                <div className="g2">
+                  {/* Accounts List & Freeze Toggle */}
+                  <div className="card c" style={{ "--i": 1 } as React.CSSProperties}>
+                    <h3>Accounts</h3>
+                    <small>Frozen accounts refuse all movements</small>
+                    <div className="tbl">
+                      {accounts.map((acc) => (
+                        <div
+                          key={`admin-acc-${acc.id}`}
+                          className="tr"
+                          style={{ gridTemplateColumns: "2fr 1fr auto" }}
+                        >
+                          <div>
+                            <b className="mono">{acc.number}</b>
+                            <small>{acc.name}</small>
+                          </div>
+                          <div className="x">
+                            <span
+                              className={`chip ${
+                                acc.status === "frozen" ? "b" : ""
+                              }`}
+                            >
+                              {acc.status === "frozen" ? "Frozen" : "Active"}
+                            </span>
+                          </div>
+                          <button
+                            className={`sw ${acc.status !== "frozen" ? "on" : ""}`}
+                            onClick={() => handleToggleFreeze(acc)}
+                            aria-label="Toggle freeze"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Administrative Adjustment Form */}
+                  <div className="card c" style={{ "--i": 2 } as React.CSSProperties}>
+                    <h3>Adjustment</h3>
+                    <small>Posts against SYS-SUSPENSE. Reason is mandatory.</small>
+                    <form onSubmit={handlePostAdjustment} style={{ marginTop: "16px" }}>
+                      <label>
+                        Account
+                        <select
+                          value={adjAccount}
+                          onChange={(e) => setAdjAccount(e.target.value)}
+                        >
+                          {accounts.map((a) => (
+                            <option key={`opt-${a.id}`} value={a.number}>
+                              {a.number} ({a.name})
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Signed amount (₹)
+                        <input
+                          value={adjAmount}
+                          onChange={(e) => setAdjAmount(e.target.value)}
+                          placeholder="-250.00"
+                        />
+                      </label>
+                      <label>
+                        Reason
+                        <input
+                          value={adjReason}
+                          onChange={(e) => setAdjReason(e.target.value)}
+                          placeholder="Correction of bank drift"
+                          required
+                        />
+                      </label>
+                      <button className="btn w" type="submit">
+                        Post adjustment
+                      </button>
+                    </form>
+                  </div>
+                </div>
+
+                {/* AI & Surveillance Review Queue */}
+                <div className="card c" style={{ "--i": 3 } as React.CSSProperties}>
+                  <h3>Review queue</h3>
+                  <small>
+                    Suggestions only. A person decides, and the decision is recorded.
+                  </small>
+                  {reviewFlags.length === 0 ? (
+                    <p className="sm2" style={{ marginTop: "14px" }}>
+                      No flags waiting for review.
+                    </p>
+                  ) : (
+                    reviewFlags.map((flag) => (
+                      <div key={`flag-${flag.id}`} className="fl">
+                        <span className="chip a">{flag.rule_id}</span>
+                        <p>{flag.narrative || "Unusual transaction pattern flagged by rules."}</p>
+                        <div className="row">
+                          <input
+                            placeholder="Explanation (required)"
+                            value={flagExplanations[flag.id] || ""}
+                            onChange={(e) =>
+                              setFlagExplanations((prev) => ({
+                                ...prev,
+                                [flag.id]: e.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            className="btn sm"
+                            onClick={() => handleReviewDecision(flag.id, "approved")}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            className="btn o sm"
+                            onClick={() => handleReviewDecision(flag.id, "dismissed")}
+                          >
+                            Dismiss
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            )}
+          </main>
+
+          {/* Mobile Bottom Bar */}
+          <div className="bb">
+            {allowedTabs.map((tab) => (
+              <button
+                key={`bb-${tab}`}
+                className={currentTab === tab ? "on" : ""}
+                onClick={() => setCurrentTab(tab)}
+              >
+                {tab[0]?.toUpperCase() + tab.slice(1)}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* ====================================================================
+          3. MOVE MONEY MODAL
+          ==================================================================== */}
+      {isModalOpen && (
+        <div className="md on" onClick={(e) => e.target === e.currentTarget && setIsModalOpen(false)}>
+          <div className="mc">
+            {modalStep === "form" && (
+              <>
+                <h3>Move money</h3>
+                <div className="seg" style={{ marginBottom: "18px" }}>
+                  <button
+                    className={moveType === "transfer" ? "on" : ""}
+                    onClick={() => setMoveType("transfer")}
+                  >
+                    Transfer
+                  </button>
+                  <button
+                    className={moveType === "deposit" ? "on" : ""}
+                    onClick={() => setMoveType("deposit")}
+                  >
+                    Deposit
+                  </button>
+                  <button
+                    className={moveType === "withdraw" ? "on" : ""}
+                    onClick={() => setMoveType("withdraw")}
+                  >
+                    Withdraw
+                  </button>
+                </div>
+
+                {moveType === "transfer" ? (
+                  <label>
+                    To account number
+                    <input
+                      value={toAccountNum}
+                      onChange={(e) => setToAccountNum(e.target.value)}
+                      placeholder="e.g. 10XXXXXXXXXX"
+                    />
+                    {accounts.length > 1 && (
+                      <span style={{ fontSize: "12px", color: "var(--mut)", marginTop: "6px", display: "block" }}>
+                        Your other accounts:{" "}
+                        {accounts
+                          .filter((a) => a.id !== activeAccount?.id)
+                          .map((a) => (
+                            <button
+                              key={`quick-dest-${a.id}`}
+                              type="button"
+                              onClick={() => setToAccountNum(a.number)}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                color: "var(--acc)",
+                                cursor: "pointer",
+                                padding: "0 4px",
+                                textDecoration: "underline",
+                                fontFamily: "monospace",
+                              }}
+                            >
+                              {a.number} ({a.name})
+                            </button>
+                          ))}
+                      </span>
+                    )}
+                  </label>
+                ) : (
+                  <label>
+                    {moveType === "deposit" ? "To" : "From"} account
+                    <input value={activeAccount?.number || "None"} disabled />
+                  </label>
+                )}
+
+                <label>
+                  Amount
+                  <div className="pre">
+                    <span>₹</span>
+                    <input
+                      value={amountRupees}
+                      onChange={(e) => setAmountRupees(e.target.value)}
+                      placeholder="0.00"
+                    />
+                  </div>
+                </label>
+
+                <label>
+                  Memo
+                  <input
+                    value={memo}
+                    onChange={(e) => setMemo(e.target.value)}
+                    placeholder="e.g. Lunch split or invoice"
+                  />
+                </label>
+
+                <div className="mrow">
+                  <button className="btn o" onClick={() => setIsModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button className="btn" onClick={handleReviewMove}>
+                    Review
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modalStep === "review" && (
+              <>
+                <h3>Review</h3>
+                <div className="rv2">
+                  <span>Type</span>
+                  <b>{moveType[0]?.toUpperCase() + moveType.slice(1)}</b>
+                </div>
+                <div className="rv2">
+                  <span>Account</span>
+                  <b className="mono">{activeAccount?.number || "ACC-0001-A"}</b>
+                </div>
+                {moveType === "transfer" && (
+                  <div className="rv2">
+                    <span>To</span>
+                    <b className="mono">{toAccountNum}</b>
+                  </div>
+                )}
+                <div className="rv2">
+                  <span>Amount</span>
+                  <b className="mono">{formatPaise(parseRupeesToPaise(amountRupees) ?? 0)}</b>
+                </div>
+                <div className="rv2">
+                  <span>Fee</span>
+                  <b className="mono">₹0.00</b>
+                </div>
+                <div className="rv2">
+                  <span>Idempotency-Key</span>
+                  <b className="mono" style={{ fontSize: "11px" }}>
+                    {idempotencyKey}
+                  </b>
+                </div>
+
+                {moveAttempted && (
+                  <p
+                    className="sm2"
+                    style={{
+                      color: moveError?.includes("frozen") ? "var(--bad)" : "var(--mut)",
+                      marginTop: "12px",
+                      fontWeight: moveError?.includes("frozen") ? 600 : 400,
+                    }}
+                  >
+                    {moveError || "Outcome unconfirmed: retry same request safely with identical Idempotency-Key."}
+                  </p>
+                )}
+
+                <div className="mrow">
+                  {moveAttempted ? (
+                    <button className="btn o" onClick={() => setIsModalOpen(false)}>
+                      Cancel
+                    </button>
+                  ) : (
+                    <button className="btn o" onClick={() => setModalStep("form")}>
+                      Back
+                    </button>
+                  )}
+                  <button className="btn" onClick={handleExecuteMove}>
+                    {moveAttempted ? "Retry same request" : "Confirm"}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {modalStep === "busy" && (
+              <>
+                <h3>Posting…</h3>
+                <div className="sp" />
+                <p className="sm2" style={{ textAlign: "center" }}>
+                  Waiting for the confirmed ledger state. Balances never update optimistically.
+                </p>
+              </>
+            )}
+
+            {modalStep === "done" && moveResult && (
+              <>
+                <div className="res">
+                  <span
+                    className={`chip ${
+                      moveResult.status === "posted"
+                        ? ""
+                        : moveResult.status === "replayed"
+                        ? "a"
+                        : "b"
+                    }`}
+                  >
+                    {moveResult.status === "posted"
+                      ? "Posted"
+                      : moveResult.status === "replayed"
+                      ? "Idempotent-Replayed: true"
+                      : `Refused · ${moveResult.code}`}
+                  </span>
+                  <h3 className="mono">
+                    {formatPaise(moveResult.amountPaise ?? 0)}
+                  </h3>
+                  <p className="sm2">
+                    {moveResult.status === "replayed"
+                      ? "Replayed. Not charged again."
+                      : moveResult.status === "posted"
+                      ? `Journal ${moveResult.journalId?.slice(0, 8)} · balance ${formatPaise(
+                          moveResult.balanceAfter ?? 0
+                        )}`
+                      : "No money moved. The refusal is committed to your statement."}
+                  </p>
+                </div>
+
+                <div className="rv2">
+                  <span>Receipt</span>
+                  <b className="mono">
+                    IDEMPOTENCY VERIFIED · KEY {idempotencyKey.slice(0, 4)}…
+                    {idempotencyKey.slice(-4)}
+                  </b>
+                </div>
+
+                <div className="mrow">
+                  {moveResult.status !== "refused" && (
+                    <button className="btn o" onClick={handleExecuteMove}>
+                      Retry same request
+                    </button>
+                  )}
+                  <button className="btn" onClick={() => setIsModalOpen(false)}>
+                    Done
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
