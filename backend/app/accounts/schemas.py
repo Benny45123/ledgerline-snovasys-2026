@@ -6,9 +6,9 @@ All input schemas prohibit extra attributes (extra="forbid") and enforce strict 
 """
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Any, List, Literal, Optional
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class StrictAccountBaseModel(BaseModel):
@@ -19,6 +19,16 @@ class CreateAccountRequest(StrictAccountBaseModel):
     name: str = Field(..., min_length=2, max_length=128, description="Account holder display name")
     owner_user_id: UUID = Field(..., description="User UUID to assign as initial owner")
     overdraft_limit: int = Field(default=0, ge=0, description="Authorized overdraft limit in paise")
+
+    @field_validator("owner_user_id", mode="before")
+    @classmethod
+    def parse_owner_user_id(cls, v: Any) -> Any:
+        if isinstance(v, str):
+            try:
+                return UUID(v)
+            except ValueError:
+                raise ValueError("Invalid UUID format")
+        return v
 
 
 class AccountResponse(StrictAccountBaseModel):
