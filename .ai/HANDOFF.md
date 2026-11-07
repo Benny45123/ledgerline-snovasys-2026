@@ -1,6 +1,46 @@
 # Agent Handoff Notes
 
-### Latest: 2026-11-06 17:05 IST — Backend Core Delivery
+### Latest: 2026-11-07 16:00 IST — Backend Security & Bug Audit Report
+- **Files Touched**:
+  - `docs/BACKEND_AUDIT_REPORT.md`: Comprehensive audit report covering 9 backend vulnerabilities/bugs across auth, accounts, ledger, review, migrations, and test suites.
+- **Key Findings Documented**:
+  - VULN-01 (Critical): Downward admin balance adjustment blocked by customer `AccountMember` check in `post_movement()`.
+  - VULN-02 (Critical): Review decision endpoint fails with HTTP 500 because mutating `review_flags.status` violates `trg_review_flags_append_only_rows` trigger.
+  - VULN-03 (High): Transfer endpoint allows transferring customer money directly to `SYS-EXTERNAL` or `SYS-SUSPENSE`.
+  - VULN-04 (High): Login throttler crashes with `AttributeError` due to `.as_string()` on SQLAlchemy JSONB expression.
+  - VULN-05 to 09 (Medium/Low): Flag escalation status bug, disconnected surveillance pipeline, admin direct deposit role leak, unhandled malformed `Content-Length`, and statement keyset sort order.
+  - TEST-01: Broken test interfaces and directory path bug in `test_import_boundaries.py`.
+
+### Previous: 2026-11-07 15:38 IST — UI Polish & Cleanup
+
+### Previous: 2026-11-07 14:45 IST — Pydantic v2 Strict UUID Deserialization Fix
+- **Files Touched**:
+  - `backend/app/ledger/schemas.py`: Added `field_validator(..., mode="before")` on `TransferRequest.from_account_id` and `AdjustmentRequest.account_id` to parse RFC JSON UUID strings into `UUID` instances before validation, preventing Pydantic v2 `strict=True` 422 `is_instance_of` rejections.
+  - `backend/app/accounts/schemas.py`: Added `field_validator(..., mode="before")` on `CreateAccountRequest.owner_user_id`.
+  - `backend/tests/unit/test_amount_validation.py`: Added tests asserting valid UUID strings are parsed into `UUID` objects, invalid UUID strings are rejected with 422, and amounts remain strictly validated as integer paise (rejecting floats, strings, booleans).
+  - `.ai/candidates.md`: Logged defect candidate entry per `07_AI_FEATURE_AND_HONESTY.md`.
+
+### Previous: 2026-11-07 14:15 IST — Review Findings Remediation (10 Issues Fixed)
+- **Files Touched**:
+  - `frontend/app/app/page.tsx`:
+    1. Gated demo role selector and pre-filled credentials behind `NEXT_PUBLIC_DEMO_MODE === "true"`. Form inputs default to empty string.
+    2. Locked movement payload in `"review"` step after unknown outcome errors (5xx/network/timeout) with "Retry same request" to prevent key-reuse/tampering bugs.
+    3. Fixed admin adjustments so adjusting an account does not switch or corrupt the active account statement context.
+    4. Replaced hard-coded "Replays blocked: 1" with server-computed "Debits sent" KPI; implemented keyset cursor pagination with "Load more" action.
+    5. Gated session token dropping strictly on 401 unauthenticated errors (preventing logout on transient 5xx or network errors).
+    6. Removed `autoPlay` from `<video id="lv">` and respected `prefers-reduced-motion` in `handleVideoEnded`.
+    7. Removed permanent client-side login lockout (`loginFails >= 4`), delegating rate-limiting to server progressive delay.
+    8. Reset all session-scoped state on logout and clamped `currentTab` to `allowedTabs`.
+    9. Mapped `/audit/verify` discrepancy reports to the 4-point health matrix, rendered real SHA-256 hashes from statement entries, and isolated the tampering simulation demo overlay.
+  - `frontend/lib/api.ts`: Added `prev_hash` & `entry_hash` to `StatementItem`, `has_more` & `next_after` to `StatementResponse`, and mapped `Discrepancy[]` in `AuditVerification`.
+  - `backend/app/ledger/schemas.py`: Added `prev_hash` & `entry_hash` to `StatementItem`; added `has_more: bool` & `next_after: Optional[int]` to `StatementResponse`.
+  - `backend/app/ledger/queries.py`: Extracted `prev_hash` and `entry_hash` in SQL query and returned keyset pagination metadata (`has_more`, `next_after`).
+  - `backend/app/audit/verify.py`: Added `is_valid: bool = True` field to `AuditVerifyReport` and assigned `is_valid=verified`.
+  - `frontend/.env.example`: Created with documentation for `NEXT_PUBLIC_DEMO_MODE=false`.
+  - `CHANGELOG.md`, `PROMPTS.md`, `.ai/STATUS.md`, `.ai/PROMPTS.md`: Corrected claims (removed `app-scr`, updated auth video description, accurately stated 4 server KPIs, pagination, and audit mapping).
+  - `.ai/candidates.md`: Documented all 10 defect candidates per `07_AI_FEATURE_AND_HONESTY.md`.
+
+### Previous: 2026-11-06 17:05 IST — Backend Core Delivery
 - **Files Touched**:
   - `backend/app/config.py`: Environment configuration with fail-fast production guards.
   - `backend/app/logging.py`: Structlog configuration with sensitive parameter redaction.

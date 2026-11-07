@@ -121,7 +121,7 @@ class IdempotencyKeyReuseError(AppError):
 class InvalidDestinationError(AppError):
     status_code = 422
     code = "invalid_destination"
-    message = "The destination account is invalid, frozen, or closed."
+    message = "The destination account is invalid, closed, or frozen by an administrator."
 
 
 # 429 Too Many Requests

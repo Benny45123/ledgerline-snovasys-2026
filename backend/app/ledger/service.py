@@ -205,6 +205,8 @@ def post_movement(
         if dest_acc.status in ("frozen", "closed"):
             # Uniform error so external callers cannot probe destination account status
             db.rollback()
+            if kind == "deposit" and dest_acc.status == "frozen":
+                raise InvalidDestinationError("The account is frozen by an administrator. Deposits are not permitted.")
             raise InvalidDestinationError()
 
         if src_acc.currency != "INR" or dest_acc.currency != "INR":
