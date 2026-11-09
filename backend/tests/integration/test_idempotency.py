@@ -9,7 +9,9 @@ It proves that:
 """
 
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.engine import SessionLocal
 from app.db.models import IdempotencyReplay, Journal
@@ -101,7 +103,7 @@ def test_idempotency_key_reuse_payload_mismatch(db: Session, test_users):
             amount=10000,
             raw_payload={"amount": 10000},
         )
-        assert False, "Expected IdempotencyKeyReuseError"
+        raise AssertionError("Expected IdempotencyKeyReuseError")
     except IdempotencyKeyReuseError:
         pass
 

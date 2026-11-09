@@ -7,21 +7,22 @@ Worker exceptions and results are collected deterministically.
 """
 
 import threading
-from typing import Any, Callable, List, Tuple
+from collections.abc import Callable
+from typing import Any
 
 
 def fire_concurrent(
     n: int,
     fn: Callable[[int], Any],
     start_barrier: bool = True,
-) -> List[Tuple[int, Any, Any]]:
+) -> list[tuple[int, Any, Any]]:
     """Execute fn(i) across n concurrent threads released at the same instant.
 
     Returns:
         List of (thread_index, result, exception) tuples.
     """
     barrier = threading.Barrier(n) if start_barrier else None
-    results: List[Tuple[int, Any, Any]] = [None] * n  # type: ignore
+    results: list[tuple[int, Any, Any]] = [None] * n  # type: ignore
 
     def worker(i: int) -> None:
         try:

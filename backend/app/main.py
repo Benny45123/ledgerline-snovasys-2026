@@ -11,11 +11,13 @@ Security features:
 """
 
 from typing import Any
+
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+
 from app.accounts.routes import router as accounts_router
 from app.audit.routes import router as audit_router
 from app.auth.routes import router as auth_router

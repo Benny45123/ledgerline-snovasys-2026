@@ -7,11 +7,11 @@ Invariants enforced:
 - Append-only trigger: forbid_mutation raises an exception on UPDATE/DELETE on ledger tables.
 """
 
-import uuid
 import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account
 from app.db.models import User
 
@@ -24,7 +24,7 @@ def test_balance_floor_check_constraint(db: Session, test_users: dict[str, User]
         owner_user_id=holder.id,
         overdraft_limit=0,
     )
-    
+
     # Attempt direct SQL UPDATE setting balance below overdraft_limit (0)
     with pytest.raises(IntegrityError):
         db.execute(

@@ -8,7 +8,9 @@ and the cryptographic verify engine confirms zero discrepancies.
 """
 
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.audit.verify import verify_ledger_integrity
 from app.ledger.service import post_movement
@@ -21,8 +23,9 @@ def test_conservation_invariant(db: Session, test_users):
     ext_acc = get_system_account(db, "external")
 
     initial_ext_balance = ext_acc.balance
-    from app.db.models import Account
     from sqlalchemy import func
+
+    from app.db.models import Account
     initial_customer_sum = int(
         db.query(func.coalesce(func.sum(Account.balance), 0))
         .filter(Account.kind == "customer")

@@ -7,13 +7,14 @@ Counterparty account numbers are masked to ****1234 to preserve user privacy. Ke
 using account_seq prevents offset performance degradation and statement pagination drift.
 """
 
-from typing import List, Optional, Tuple
 from uuid import UUID
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.db.models import Account, LedgerEntry, RefusedAttempt, User, Journal
-from app.ledger.schemas import InitiatorInfo, StatementItem, StatementResponse
+
+from app.db.models import Account
 from app.errors import NotFoundError
+from app.ledger.schemas import InitiatorInfo, StatementItem, StatementResponse
 
 
 def mask_account_number(number: str) -> str:
@@ -26,7 +27,7 @@ def mask_account_number(number: str) -> str:
 def get_account_statement(
     db: Session,
     account_id: UUID,
-    after_seq: Optional[int] = None,
+    after_seq: int | None = None,
     limit: int = 50,
     order: str = "asc",
 ) -> StatementResponse:
@@ -50,7 +51,7 @@ def get_account_statement(
     stmt_sql = text(
         f"""
         (
-            SELECT 
+            SELECT
                 'posting' AS item_type,
                 e.account_seq,
                 e.created_at AS at,
@@ -76,7 +77,7 @@ def get_account_statement(
         )
         UNION ALL
         (
-            SELECT 
+            SELECT
                 'refusal' AS item_type,
                 r.account_seq,
                 r.created_at AS at,
@@ -99,7 +100,7 @@ def get_account_statement(
         )
         ORDER BY account_seq {sort_dir}
         LIMIT :limit
-        """
+        """  # nosec B608
     )
 
     params = {"account_id": account_id, "limit": limit + 1}
@@ -111,7 +112,7 @@ def get_account_statement(
     has_more = len(rows) > limit
     display_rows = rows[:limit]
 
-    items: List[StatementItem] = []
+    items: list[StatementItem] = []
     for row in display_rows:
         items.append(
             StatementItem(

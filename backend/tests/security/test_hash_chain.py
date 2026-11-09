@@ -7,11 +7,12 @@ identifying the exact account and sequence where the chain was broken.
 """
 
 import uuid
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.audit.verify import verify_ledger_integrity
-from app.db.models import LedgerEntry
 from app.ledger.service import post_movement
 
 
@@ -56,8 +57,8 @@ def test_hash_chain_detects_tampering(db: Session, test_users):
         db.execute(
             text(
                 """
-                UPDATE ledger_entries 
-                SET amount = 999999 
+                UPDATE ledger_entries
+                SET amount = 999999
                 WHERE account_id = :acc_id AND account_seq = 1;
                 """
             ),
@@ -79,8 +80,8 @@ def test_hash_chain_detects_tampering(db: Session, test_users):
         db.execute(
             text(
                 """
-                UPDATE ledger_entries 
-                SET amount = 10000 
+                UPDATE ledger_entries
+                SET amount = 10000
                 WHERE account_id = :acc_id AND account_seq = 1;
                 """
             ),

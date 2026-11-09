@@ -7,11 +7,12 @@ explicit system prompt instructions, preventing prompt injection attacks from ma
 the output. The narrative is purely visual and can never trigger state changes or ledger writes.
 """
 
-from typing import Any, Dict
+from typing import Any
+
 from app.config import settings
 
 
-def generate_narrative_explanation(rule_id: str, evidence: Dict[str, Any]) -> str:
+def generate_narrative_explanation(rule_id: str, evidence: dict[str, Any]) -> str:
     """Generate explanatory narrative for flagged activity (rule-based fallback)."""
     if not settings.LLM_ENABLED or not settings.LLM_API_KEY:
         if rule_id == "RULE_HIGH_VALUE":

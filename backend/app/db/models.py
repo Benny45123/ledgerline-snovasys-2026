@@ -10,8 +10,7 @@ All constraints from docs/ARCHITECTURE.md are represented:
 """
 
 import uuid
-from datetime import datetime
-from typing import Optional, Any, Dict
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -19,7 +18,6 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
-    Index,
     Integer,
     String,
     Text,
@@ -28,6 +26,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import BYTEA, JSONB, UUID
 from sqlalchemy.orm import relationship
+
 from app.db.base import Base
 
 

@@ -8,14 +8,15 @@ Invariants enforced:
 """
 
 import secrets
-from datetime import datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
+
 from app.auth.sessions import hash_token
 
 
 def test_session_token_entropy() -> None:
     token_1 = secrets.token_urlsafe(32)
     token_2 = secrets.token_urlsafe(32)
-    
+
     assert len(token_1) >= 40
     assert token_1 != token_2
 
@@ -24,16 +25,16 @@ def test_session_token_hashing() -> None:
     token = secrets.token_urlsafe(32)
     token_hash_1 = hash_token(token)
     token_hash_2 = hash_token(token)
-    
+
     assert token_hash_1 == token_hash_2
     assert len(token_hash_1) == 32  # SHA-256 bytea
     assert token_hash_1 != token.encode("utf-8")  # Raw token never equals stored hash
 
 
 def test_session_expiration_check() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     future = now + timedelta(hours=1)
     past = now - timedelta(hours=1)
-    
+
     assert (future > now) is True
     assert (past > now) is False

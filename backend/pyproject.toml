@@ -31,3 +31,57 @@ dev = [
     "ruff>=0.17.4",
 ]
 
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "W",
+    "I",
+    "UP",
+    "B",
+    "RUF",
+]
+ignore = [
+    "B008",   # FastAPI Depends() in route signature
+    "E501",   # Line length
+    "RUF012", # Mutable class attributes in models
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "S101",
+    "BLE001",
+    "RUF059",
+    "F841",
+]
+"migrations/*" = [
+    "F401",
+    "E402",
+]
+"app/seed/__main__.py" = [
+    "F841",
+]
+"app/main.py" = [
+    "BLE001",
+]
+"app/auth/passwords.py" = [
+    "BLE001",
+    "S110",
+]
+
+[tool.mypy]
+python_version = "3.12"
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = false
+disallow_subclassing_any = false
+ignore_missing_imports = true
+
+
+

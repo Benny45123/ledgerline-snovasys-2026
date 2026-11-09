@@ -7,16 +7,18 @@ review_decisions table with the admin's identity, timestamp, and mandatory writt
 Neither AI nor flags can ever reverse, debit, or credit an account directly.
 """
 
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import UTC, datetime
+from typing import Any, Literal
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
 from app.db.engine import get_db
 from app.db.models import ReviewDecision, ReviewFlag, User
 from app.deps import require_role
-from app.errors import NotFoundError, ValidationError
+from app.errors import NotFoundError
 
 router = APIRouter(prefix="/review", tags=["Review & Surveillance"])
 
@@ -32,7 +34,7 @@ def list_flags(
     status: str = "open",
     current_user: User = Depends(require_role("admin", "auditor")),
     db: Session = Depends(get_db),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """List surveillance flags with dynamically derived status (Admin & Auditor read-only)."""
     # Subquery to identify the latest decision per flag
     latest_decisions = (
@@ -60,7 +62,7 @@ def list_flags(
         .all()
     )
 
-    res: List[Dict[str, Any]] = []
+    res: list[dict[str, Any]] = []
     target_status = status.lower()
 
     for f, dec in rows:
@@ -104,7 +106,7 @@ def record_decision(
     req: DecisionRequest,
     current_user: User = Depends(require_role("admin")),
     db: Session = Depends(get_db),
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Record an immutable human decision on a flagged item (Admin only)."""
     flag = db.query(ReviewFlag).filter(ReviewFlag.id == flag_id).first()
     if not flag:
@@ -121,7 +123,7 @@ def record_decision(
         decision=canonical_decision,
         reason=req.reason,
         decided_by=current_user.id,
-        created_at=datetime.now(timezone.utc),
+        created_at=datetime.now(UTC),
     )
     db.add(decision_record)
     # ReviewFlag is append-only; we do NOT mutate flag.status

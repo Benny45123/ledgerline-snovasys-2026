@@ -6,9 +6,11 @@ recorded duplicate requests (/audit/replays), and system authentication/IDOR eve
 Only users with 'admin' or 'auditor' roles can access these routes.
 """
 
-from typing import Any, Dict, List
+from typing import Any
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
+
 from app.audit.verify import AuditVerifyReport, verify_ledger_integrity
 from app.db.engine import get_db
 from app.db.models import IdempotencyReplay, SecurityEvent, User
@@ -31,7 +33,7 @@ def list_replays(
     limit: int = 50,
     current_user: User = Depends(require_role("admin", "auditor")),
     db: Session = Depends(get_db),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Retrieve recorded idempotent replay logs (proof of deduplication)."""
     replays = (
         db.query(IdempotencyReplay)
@@ -57,7 +59,7 @@ def list_security_events(
     limit: int = 50,
     current_user: User = Depends(require_role("admin", "auditor")),
     db: Session = Depends(get_db),
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Retrieve logged security events (IDOR, failed logins, admin freezes)."""
     events = (
         db.query(SecurityEvent)

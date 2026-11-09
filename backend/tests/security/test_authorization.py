@@ -8,9 +8,11 @@ It proves that:
 """
 
 import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.auth.sessions import create_session
 from app.errors import NotFoundError

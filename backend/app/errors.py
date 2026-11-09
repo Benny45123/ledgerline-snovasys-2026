@@ -8,10 +8,10 @@ Raw SQL messages, database connection strings, and stack traces are suppressed
 from the client to prevent information disclosure.
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 
-def standardized_error_envelope(code: str, message: str, request_id: str) -> Dict[str, Any]:
+def standardized_error_envelope(code: str, message: str, request_id: str) -> dict[str, Any]:
     """Create the contractual error envelope: {"error": {"code", "message", "request_id"}}."""
     return {
         "error": {
@@ -31,10 +31,10 @@ class AppError(Exception):
 
     def __init__(
         self,
-        message: Optional[str] = None,
-        code: Optional[str] = None,
-        status_code: Optional[int] = None,
-        details: Optional[Dict[str, Any]] = None,
+        message: str | None = None,
+        code: str | None = None,
+        status_code: int | None = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message or self.message)
         if message:

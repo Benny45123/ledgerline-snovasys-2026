@@ -8,10 +8,12 @@ Invariants enforced:
 """
 
 from uuid import UUID
+
 import pytest
 from pydantic import ValidationError
-from app.ledger.schemas import AdjustmentRequest, DepositRequest, TransferRequest, WithdrawRequest
+
 from app.config import settings
+from app.ledger.schemas import AdjustmentRequest, DepositRequest, TransferRequest, WithdrawRequest
 
 
 def test_positive_integer_paise_accepted() -> None:

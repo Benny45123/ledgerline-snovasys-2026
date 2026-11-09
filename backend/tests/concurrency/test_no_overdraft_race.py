@@ -10,12 +10,14 @@ Under row locking and check-after-lock semantics:
 - Exactly 3 journals and 17 refused_attempts rows are recorded in the ledger.
 """
 
+import time
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.engine import SessionLocal
-from app.db.models import Account, Journal, RefusedAttempt
-import time
+from app.db.models import Journal, RefusedAttempt
 from app.errors import InsufficientFundsError, LockTimeoutError
 from app.ledger.service import post_movement
 from tests.helpers.concurrency import fire_concurrent

@@ -9,7 +9,9 @@ cyclic lock dependency is eliminated and zero deadlock exceptions (40P01) occur.
 
 import time
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.engine import SessionLocal
 from app.errors import LockTimeoutError

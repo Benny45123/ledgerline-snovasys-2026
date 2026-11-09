@@ -9,6 +9,7 @@ mocking money paths or SQLite substitutions is strictly prohibited.
 import os
 import sys
 import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -16,12 +17,12 @@ from sqlalchemy.orm import Session
 # Ensure backend root is on Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from app.accounts.service import get_system_account
 from app.auth.passwords import hash_password
 from app.db.base import Base
 from app.db.engine import SessionLocal, engine
-from app.db.models import Account, AccountMember, User
+from app.db.models import User
 from app.main import app
-from app.accounts.service import create_customer_account, get_system_account
 
 
 @pytest.fixture(scope="session", autouse=True)

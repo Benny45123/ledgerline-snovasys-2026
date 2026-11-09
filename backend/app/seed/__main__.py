@@ -11,17 +11,17 @@ It safely initializes:
 Running this script multiple times produces identical state without duplicate journals.
 """
 
-import sys
 import uuid
-from typing import Optional
+
 from sqlalchemy.orm import Session
+
+from app.accounts.service import create_customer_account, get_system_account
 from app.auth.passwords import hash_password
 from app.db.engine import SessionLocal
-from app.db.models import Account, AccountMember, User
-from app.accounts.service import create_customer_account, get_system_account
+from app.db.models import AccountMember, User
 from app.ledger.service import post_movement
 
-DEMO_PASSWORD = "DemoPassword123!"
+DEMO_PASSWORD = "DemoPassword123!"  # nosec B105
 
 SEED_USERS = [
     ("admin@ledgerline.internal", "admin"),
@@ -31,7 +31,7 @@ SEED_USERS = [
 ]
 
 
-def seed_database(db: Optional[Session] = None) -> None:
+def seed_database(db: Session | None = None) -> None:
     """Idempotently seed roles, accounts, and opening balances."""
     close_db = False
     if db is None:

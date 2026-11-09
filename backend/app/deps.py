@@ -9,16 +9,18 @@ before endpoint logic executes, ensuring the principle of least privilege.
 """
 
 import uuid
-from typing import Callable, Optional
-from fastapi import Depends, Header, Request
+from collections.abc import Callable
+
+from fastapi import Depends, Header
 from sqlalchemy.orm import Session
+
 from app.auth.sessions import get_user_from_token
 from app.db.engine import get_db
 from app.db.models import User
 from app.errors import ForbiddenError, UnauthorizedError
 
 
-def get_request_id(x_request_id: Optional[str] = Header(None)) -> str:
+def get_request_id(x_request_id: str | None = Header(None)) -> str:
     """Extract client request ID or generate a fresh UUID hex string."""
     if x_request_id and 8 <= len(x_request_id) <= 64:
         return x_request_id
@@ -26,7 +28,7 @@ def get_request_id(x_request_id: Optional[str] = Header(None)) -> str:
 
 
 def get_current_user(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     db: Session = Depends(get_db),
 ) -> User:
     """Validate bearer token from Authorization header and return active user."""

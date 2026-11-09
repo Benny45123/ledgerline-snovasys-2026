@@ -11,20 +11,22 @@ the exact account, sequence, and discrepant value.
 """
 
 from collections import defaultdict
-from typing import Any, Dict, List, Optional
+from typing import Any
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import func, text
+from sqlalchemy import func
 from sqlalchemy.orm import Session
-from app.db.models import Account, Journal, LedgerEntry, RefusedAttempt
+
+from app.db.models import Account, LedgerEntry, RefusedAttempt
 from app.ledger.hashing import compute_entry_hash, compute_refusal_hash
 
 
 class Discrepancy(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
     check: str
-    account_id: Optional[UUID] = None
-    account_seq: Optional[int] = None
+    account_id: UUID | None = None
+    account_seq: int | None = None
     expected: Any
     actual: Any
     message: str
@@ -39,12 +41,12 @@ class AuditVerifyReport(BaseModel):
     total_journals_verified: int
     global_balance_sum: int
     customer_balance_sum: int
-    discrepancies: List[Discrepancy]
+    discrepancies: list[Discrepancy]
 
 
 def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
     """Execute complete cryptographic hash chain and accounting equation reconciliation."""
-    discrepancies: List[Discrepancy] = []
+    discrepancies: list[Discrepancy] = []
     total_entries = 0
     total_journals = 0
 
@@ -61,11 +63,11 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
         .order_by(RefusedAttempt.account_id, RefusedAttempt.account_seq.asc())
         .all()
     )
-    entries_by_account: Dict[UUID, List[LedgerEntry]] = defaultdict(list)
+    entries_by_account: dict[UUID, list[LedgerEntry]] = defaultdict(list)
     for e in raw_entries:
         entries_by_account[e.account_id].append(e)
 
-    refusals_by_account: Dict[UUID, List[RefusedAttempt]] = defaultdict(list)
+    refusals_by_account: dict[UUID, list[RefusedAttempt]] = defaultdict(list)
     for r in raw_refusals:
         refusals_by_account[r.account_id].append(r)
 

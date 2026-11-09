@@ -14,13 +14,15 @@ Unexpected exceptions cleanly rollback the entire transaction including the key 
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any, Literal
 from uuid import UUID
+
 from psycopg.errors import LockNotAvailable, QueryCanceled
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.db.models import (
     Account,
@@ -62,10 +64,10 @@ def post_movement(
     source_account_id: UUID,
     destination_account_id: UUID,
     amount: int,
-    raw_payload: Dict[str, Any],
-    memo: Optional[str] = None,
-    reverses_journal_id: Optional[UUID] = None,
-) -> Tuple[MovementResponse, bool]:
+    raw_payload: dict[str, Any],
+    memo: str | None = None,
+    reverses_journal_id: UUID | None = None,
+) -> tuple[MovementResponse, bool]:
     """Execute atomic money movement or return an idempotent replay.
 
     Returns:
@@ -216,7 +218,7 @@ def post_movement(
                     raise NotFoundError("Account not found.")
 
         # Phase 4: Validate Account Status
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if src_acc.status == "frozen":
             _record_refusal_and_commit(

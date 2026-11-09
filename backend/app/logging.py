@@ -9,7 +9,9 @@ Every log entry includes an immutable request_id and UTC timestamp for auditabil
 
 import logging
 import sys
-from typing import Any, MutableMapping
+from collections.abc import MutableMapping
+from typing import Any
+
 import structlog
 
 SENSITIVE_KEYS = {
@@ -45,14 +47,9 @@ def setup_logging(env: str = "dev") -> None:
     ]
 
     if env == "prod":
-        processors = shared_processors + [
-            structlog.processors.format_exc_info,
-            structlog.processors.JSONRenderer(),
-        ]
+        processors = [*shared_processors, structlog.processors.format_exc_info, structlog.processors.JSONRenderer()]
     else:
-        processors = shared_processors + [
-            structlog.dev.ConsoleRenderer(colors=True),
-        ]
+        processors = [*shared_processors, structlog.dev.ConsoleRenderer(colors=True)]
 
     structlog.configure(
         processors=processors,

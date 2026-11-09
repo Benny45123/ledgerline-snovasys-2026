@@ -10,10 +10,11 @@ Flags evaluate:
 - Admin balance adjustments.
 """
 
-from typing import List, Optional
 from uuid import UUID
+
 from sqlalchemy.orm import Session
-from app.db.models import Journal, LedgerEntry, ReviewFlag
+
+from app.db.models import Journal, ReviewFlag
 
 HIGH_VALUE_THRESHOLD = 50_000_000  # ₹5,00,000 in paise
 
@@ -23,9 +24,9 @@ def evaluate_transaction_for_flags(
     journal: Journal,
     account_id: UUID,
     amount: int,
-) -> List[ReviewFlag]:
+) -> list[ReviewFlag]:
     """Scan newly posted movement against deterministic rules and generate flags."""
-    flags: List[ReviewFlag] = []
+    flags: list[ReviewFlag] = []
 
     # Rule 1: High value transfer
     if abs(amount) >= HIGH_VALUE_THRESHOLD:

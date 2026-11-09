@@ -9,10 +9,11 @@ Auditors are strictly restricted to read-only GET routes. Admins can freeze/unfr
 and make adjustments against the designated SUSPENSE account.
 """
 
-from typing import List, Optional
 from uuid import UUID
+
 from fastapi import APIRouter, Depends, Header, Response
 from sqlalchemy.orm import Session
+
 from app.accounts.schemas import (
     AccountListResponse,
     AccountResponse,
@@ -28,7 +29,6 @@ from app.db.engine import get_db
 from app.db.models import Account, AccountMember, Journal, LedgerEntry, User
 from app.deps import get_current_user, get_request_id, require_role
 from app.errors import (
-    ForbiddenError,
     InvalidDestinationError,
     MissingIdempotencyKeyError,
     NotFoundError,
@@ -50,7 +50,7 @@ from app.review.rules import evaluate_transaction_for_flags
 router = APIRouter(tags=["Accounts & Money Movement"])
 
 
-def require_idempotency_key(idempotency_key: Optional[str] = Header(None)) -> str:
+def require_idempotency_key(idempotency_key: str | None = Header(None)) -> str:
     """Validate presence and format of required Idempotency-Key header."""
     if not idempotency_key:
         raise MissingIdempotencyKeyError()
@@ -151,7 +151,7 @@ def get_account(
 @router.get("/accounts/{account_id}/statement", response_model=StatementResponse)
 def get_statement(
     account_id: UUID,
-    after: Optional[int] = None,
+    after: int | None = None,
     limit: int = 50,
     order: str = "asc",
     current_user: User = Depends(get_current_user),

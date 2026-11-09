@@ -7,8 +7,10 @@ Failure modes:
 """
 
 import uuid
+
 import pytest
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.models import RefusedAttempt, User
 from app.errors import InsufficientFundsError
@@ -24,7 +26,7 @@ def test_refused_withdrawal_is_persisted_in_db(db: Session, test_users: dict[str
         owner_user_id=holder.id,
         overdraft_limit=0,
     )
-    
+
     # Attempt an over-limit withdrawal of 5000 paise on an account with balance 0
     refusal_key = f"refusal-key-{uuid.uuid4().hex[:12]}"
     with pytest.raises(InsufficientFundsError):
@@ -40,7 +42,7 @@ def test_refused_withdrawal_is_persisted_in_db(db: Session, test_users: dict[str
             raw_payload={"amount": 5000},
             memo="Overdraft withdrawal test",
         )
-    
+
     # Verify a permanent refusal record was committed to refused_attempts
     refusal_records = (
         db.query(RefusedAttempt)

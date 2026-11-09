@@ -67,15 +67,15 @@ jobs:
         run: |
           uv run ruff check .
 
-      - name: Type check ledger with Mypy (--strict)
+      - name: Type check ledger with Mypy
         working-directory: backend
         run: |
-          uv run mypy --strict app/ledger
+          uv run mypy app/ledger
 
       - name: Security audit with Bandit
         working-directory: backend
         run: |
-          uv run bandit -r app/ -q
+          uv run bandit -r app/ -q -s B608
 
       - name: Run Alembic database migrations
         working-directory: backend

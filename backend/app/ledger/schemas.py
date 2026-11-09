@@ -8,9 +8,11 @@ unauthorized parameter injection attacks. Response models never leak counterpart
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Literal
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.config import settings
 
 
@@ -25,7 +27,7 @@ class DepositRequest(StrictLedgerBaseModel):
         le=settings.MAX_AMOUNT_PAISE,
         description="Deposit amount in integer paise (e.g. ₹100.00 = 10000 paise)",
     )
-    memo: Optional[str] = Field(None, max_length=140, description="Optional transaction memo")
+    memo: str | None = Field(None, max_length=140, description="Optional transaction memo")
 
 
 class WithdrawRequest(StrictLedgerBaseModel):
@@ -35,7 +37,7 @@ class WithdrawRequest(StrictLedgerBaseModel):
         le=settings.MAX_AMOUNT_PAISE,
         description="Withdrawal amount in integer paise",
     )
-    memo: Optional[str] = Field(None, max_length=140, description="Optional transaction memo")
+    memo: str | None = Field(None, max_length=140, description="Optional transaction memo")
 
 
 class TransferRequest(StrictLedgerBaseModel):
@@ -47,7 +49,7 @@ class TransferRequest(StrictLedgerBaseModel):
         le=settings.MAX_AMOUNT_PAISE,
         description="Transfer amount in integer paise",
     )
-    memo: Optional[str] = Field(None, max_length=140, description="Optional transaction memo")
+    memo: str | None = Field(None, max_length=140, description="Optional transaction memo")
 
     @field_validator("from_account_id", mode="before")
     @classmethod
@@ -55,8 +57,8 @@ class TransferRequest(StrictLedgerBaseModel):
         if isinstance(v, str):
             try:
                 return UUID(v)
-            except ValueError:
-                raise ValueError("Invalid UUID format")
+            except ValueError as e:
+                raise ValueError("Invalid UUID format") from e
         return v
 
 
@@ -83,8 +85,8 @@ class AdjustmentRequest(StrictLedgerBaseModel):
         if isinstance(v, str):
             try:
                 return UUID(v)
-            except ValueError:
-                raise ValueError("Invalid UUID format")
+            except ValueError as e:
+                raise ValueError("Invalid UUID format") from e
         return v
 
 
@@ -119,15 +121,15 @@ class StatementItem(StrictLedgerBaseModel):
     at: datetime
     kind: str
     amount: int
-    balance_after: Optional[int] = None
-    balance_at_attempt: Optional[int] = None
+    balance_after: int | None = None
+    balance_at_attempt: int | None = None
     counterparty: str
     initiated_by: InitiatorInfo
-    journal_id: Optional[UUID] = None
-    reason_code: Optional[str] = None
+    journal_id: UUID | None = None
+    reason_code: str | None = None
     request_id: str
-    prev_hash: Optional[str] = None
-    entry_hash: Optional[str] = None
+    prev_hash: str | None = None
+    entry_hash: str | None = None
 
 
 class StatementResponse(StrictLedgerBaseModel):
@@ -136,7 +138,7 @@ class StatementResponse(StrictLedgerBaseModel):
     current_balance: int
     overdraft_limit: int
     status: str
-    items: List[StatementItem]
+    items: list[StatementItem]
     has_more: bool = False
-    next_after: Optional[int] = None
-    next_cursor: Optional[int] = None
+    next_after: int | None = None
+    next_cursor: int | None = None

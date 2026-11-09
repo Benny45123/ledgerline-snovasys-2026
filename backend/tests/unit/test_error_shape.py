@@ -7,9 +7,8 @@ Invariants enforced:
 """
 
 from app.errors import (
-    AppError,
-    InsufficientFundsError,
     AccountFrozenError,
+    InsufficientFundsError,
     InvalidIdempotencyKeyError,
     standardized_error_envelope,
 )

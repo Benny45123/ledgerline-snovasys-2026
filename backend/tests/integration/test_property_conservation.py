@@ -11,16 +11,15 @@ Regardless of operation sequence, order, or refusal:
 """
 
 import uuid
-from typing import List, Tuple
-import pytest
-from hypothesis import given, settings, HealthCheck
+
+from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.audit.verify import verify_ledger_integrity
 from app.errors import InsufficientFundsError
 from app.ledger.service import post_movement
-
 
 # Define strategy for random ledger operations: (op_kind, account_choice, amount)
 operation_strategy = st.lists(
@@ -35,7 +34,7 @@ operation_strategy = st.lists(
 
 @settings(max_examples=2, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(ops=operation_strategy)
-def test_hypothesis_conservation_property(db: Session, test_users, ops: List[Tuple[str, int]]):
+def test_hypothesis_conservation_property(db: Session, test_users, ops: list[tuple[str, int]]):
     """Property test proving conservation and floor invariants across arbitrary operation sequences."""
     holder1 = test_users["holder1"]
     holder2 = test_users["holder2"]
