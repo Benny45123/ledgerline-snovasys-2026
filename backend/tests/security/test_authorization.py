@@ -145,9 +145,9 @@ def test_transfer_route_rejects_unowned_or_system_source_account(client: TestCli
     h1_account = create_customer_account(db, f"H1 Dest {uuid.uuid4().hex[:4]}", holder1.id, overdraft_limit=0)
     h2_account = create_customer_account(db, f"H2 Target {uuid.uuid4().hex[:4]}", holder2.id, overdraft_limit=0)
 
-    session = create_session(db, holder1.id)
+    h1_token, _ = create_session(db, holder1)
     headers = {
-        "Authorization": f"Bearer {session.token}",
+        "Authorization": f"Bearer {h1_token}",
         "Idempotency-Key": f"sys-transfer-route-{uuid.uuid4()}",
     }
 
@@ -173,7 +173,7 @@ def test_transfer_route_rejects_unowned_or_system_source_account(client: TestCli
             "amount": 1000,
         },
         headers={
-            "Authorization": f"Bearer {session.token}",
+            "Authorization": f"Bearer {h1_token}",
             "Idempotency-Key": f"unowned-transfer-route-{uuid.uuid4()}",
         },
     )
