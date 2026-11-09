@@ -51,24 +51,40 @@ def test_hash_chain_detects_tampering(db: Session, test_users):
     assert len(initial_report.discrepancies) == 0
 
     # 2. Simulate superuser tampering (bypass trigger by disabling it temporarily in test)
-    db.execute(text("ALTER TABLE ledger_entries DISABLE TRIGGER trg_ledger_entries_append_only_rows;"))
-    db.execute(
-        text(
-            """
-            UPDATE ledger_entries 
-            SET amount = 999999 
-            WHERE account_id = :acc_id AND account_seq = 1;
-            """
-        ),
-        {"acc_id": acc.id},
-    )
-    db.execute(text("ALTER TABLE ledger_entries ENABLE TRIGGER trg_ledger_entries_append_only_rows;"))
-    db.commit()
+    try:
+        db.execute(text("ALTER TABLE ledger_entries DISABLE TRIGGER trg_ledger_entries_append_only_rows;"))
+        db.execute(
+            text(
+                """
+                UPDATE ledger_entries 
+                SET amount = 999999 
+                WHERE account_id = :acc_id AND account_seq = 1;
+                """
+            ),
+            {"acc_id": acc.id},
+        )
+        db.execute(text("ALTER TABLE ledger_entries ENABLE TRIGGER trg_ledger_entries_append_only_rows;"))
+        db.commit()
 
-    # 3. Verification must fail and detect the tampered account and sequence
-    tampered_report = verify_ledger_integrity(db)
-    assert tampered_report.verified is False
-    assert len(tampered_report.discrepancies) > 0
+        # 3. Verification must fail and detect the tampered account and sequence
+        tampered_report = verify_ledger_integrity(db)
+        assert tampered_report.verified is False
+        assert len(tampered_report.discrepancies) > 0
 
-    tamper_checks = [d.check for d in tampered_report.discrepancies]
-    assert "entry_hash_integrity" in tamper_checks or "balance_cache_match" in tamper_checks
+        tamper_checks = [d.check for d in tampered_report.discrepancies]
+        assert "entry_hash_integrity" in tamper_checks or "balance_cache_match" in tamper_checks
+    finally:
+        # Restore entry to keep DB valid for subsequent tests
+        db.execute(text("ALTER TABLE ledger_entries DISABLE TRIGGER trg_ledger_entries_append_only_rows;"))
+        db.execute(
+            text(
+                """
+                UPDATE ledger_entries 
+                SET amount = 10000 
+                WHERE account_id = :acc_id AND account_seq = 1;
+                """
+            ),
+            {"acc_id": acc.id},
+        )
+        db.execute(text("ALTER TABLE ledger_entries ENABLE TRIGGER trg_ledger_entries_append_only_rows;"))
+        db.commit()

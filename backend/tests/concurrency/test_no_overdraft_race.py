@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.engine import SessionLocal
 from app.db.models import Account, Journal, RefusedAttempt
-from app.errors import InsufficientFundsError
+import time
+from app.errors import InsufficientFundsError, LockTimeoutError
 from app.ledger.service import post_movement
 from tests.helpers.concurrency import fire_concurrent
 
@@ -50,25 +51,30 @@ def test_no_overdraft_race(db: Session, test_users):
     withdraw_amount = 3000
 
     def run_withdrawal(thread_idx: int):
-        thread_db: Session = SessionLocal()
-        try:
-            res, is_replayed = post_movement(
-                db=thread_db,
-                user_id=holder.id,
-                idempotency_key=f"race-withdraw-{thread_idx}-{uuid.uuid4()}",
-                request_id=f"race-req-{thread_idx}",
-                kind="withdrawal",
-                source_account_id=acc.id,
-                destination_account_id=ext_acc.id,
-                amount=withdraw_amount,
-                raw_payload={"thread": thread_idx, "amount": withdraw_amount},
-                memo=f"Race withdrawal {thread_idx}",
-            )
-            return "SUCCESS"
-        except InsufficientFundsError:
-            return "REFUSED"
-        finally:
-            thread_db.close()
+        idem_key = f"race-withdraw-{thread_idx}-{uuid.uuid4()}"
+        for attempt in range(8):
+            thread_db: Session = SessionLocal()
+            try:
+                res, is_replayed = post_movement(
+                    db=thread_db,
+                    user_id=holder.id,
+                    idempotency_key=idem_key,
+                    request_id=f"race-req-{thread_idx}",
+                    kind="withdrawal",
+                    source_account_id=acc.id,
+                    destination_account_id=ext_acc.id,
+                    amount=withdraw_amount,
+                    raw_payload={"thread": thread_idx, "amount": withdraw_amount},
+                    memo=f"Race withdrawal {thread_idx}",
+                )
+                return "SUCCESS"
+            except InsufficientFundsError:
+                return "REFUSED"
+            except LockTimeoutError:
+                time.sleep(0.15 * (attempt + 1))
+            finally:
+                thread_db.close()
+        raise LockTimeoutError("Exhausted retries on race withdrawal.")
 
     results = fire_concurrent(num_threads, run_withdrawal, start_barrier=True)
 

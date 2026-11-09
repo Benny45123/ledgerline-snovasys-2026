@@ -11,7 +11,7 @@ import os
 
 def test_review_does_not_import_ledger_service():
     """Prove that review module never imports ledger.service."""
-    review_dir = os.path.join(os.path.dirname(__file__), "..", "app", "review")
+    review_dir = os.path.join(os.path.dirname(__file__), "..", "..", "app", "review")
     for fname in os.listdir(review_dir):
         if fname.endswith(".py"):
             fpath = os.path.join(review_dir, fname)

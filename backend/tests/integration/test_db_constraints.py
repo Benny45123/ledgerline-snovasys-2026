@@ -12,33 +12,33 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.exc import DBAPIError, IntegrityError
 from sqlalchemy.orm import Session
-from app.accounts.service import AccountService
+from app.accounts.service import create_customer_account
 from app.db.models import User
 
 
-def test_balance_floor_check_constraint(db_session: Session, seed_users: dict[str, User]) -> None:
-    holder = seed_users["holder"]
-    account = AccountService.create_customer_account(
-        db=db_session,
-        owner_id=holder.id,
-        account_name="DB Floor Check Account",
-        actor_id=holder.id,
+def test_balance_floor_check_constraint(db: Session, test_users: dict[str, User]) -> None:
+    holder = test_users["holder1"]
+    account = create_customer_account(
+        db=db,
+        name="DB Floor Check Account",
+        owner_user_id=holder.id,
+        overdraft_limit=0,
     )
     
     # Attempt direct SQL UPDATE setting balance below overdraft_limit (0)
     with pytest.raises(IntegrityError):
-        db_session.execute(
+        db.execute(
             text("UPDATE accounts SET balance = -100 WHERE id = :id"),
             {"id": str(account.id)},
         )
-        db_session.commit()
-    db_session.rollback()
+        db.commit()
+    db.rollback()
 
 
-def test_append_only_trigger_rejects_journal_deletion(db_session: Session) -> None:
+def test_append_only_trigger_rejects_journal_deletion(db: Session) -> None:
     # Attempt direct SQL DELETE on journals
     with pytest.raises(DBAPIError) as exc_info:
-        db_session.execute(text("DELETE FROM journals WHERE true"))
-        db_session.commit()
-    db_session.rollback()
+        db.execute(text("DELETE FROM journals WHERE true"))
+        db.commit()
+    db.rollback()
     assert "append-only" in str(exc_info.value).lower()
