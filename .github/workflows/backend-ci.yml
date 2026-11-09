@@ -1,0 +1,159 @@
+name: Backend CI
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+    branches:
+      - "**"
+  workflow_dispatch:
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test & Quality Gates
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ledgerline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENV: test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ledgerline
+      SECRET_KEY: test-secret-key-for-ci-minimum-32-chars-long-0000000000
+      SESSION_TTL_MINUTES: 480
+      MAX_AMOUNT_PAISE: 10000000000
+      LOCK_TIMEOUT_MS: 3000
+      STATEMENT_TIMEOUT_MS: 10000
+      PYTHONPATH: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --all-groups
+
+      - name: Lint with Ruff
+        working-directory: backend
+        run: |
+          uv run ruff check .
+
+      - name: Type check ledger with Mypy (--strict)
+        working-directory: backend
+        run: |
+          uv run mypy --strict app/ledger
+
+      - name: Security audit with Bandit
+        working-directory: backend
+        run: |
+          uv run bandit -r app/ -q
+
+      - name: Run Alembic database migrations
+        working-directory: backend
+        run: |
+          uv run alembic upgrade head
+
+      - name: Seed database
+        working-directory: backend
+        run: |
+          uv run python -m app.seed
+
+      - name: Run pytest test suites (unit, integration, security, concurrency)
+        working-directory: backend
+        run: |
+          uv run pytest tests/unit tests/integration tests/security tests/concurrency -v --durations=10
+
+  mutation-check:
+    name: Invariant Mutation Testing (5/5 Killed)
+    runs-on: ubuntu-latest
+    needs: test
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ledgerline
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      ENV: test
+      DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/ledgerline
+      SECRET_KEY: test-secret-key-for-ci-minimum-32-chars-long-0000000000
+      SESSION_TTL_MINUTES: 480
+      MAX_AMOUNT_PAISE: 10000000000
+      LOCK_TIMEOUT_MS: 3000
+      STATEMENT_TIMEOUT_MS: 10000
+      PYTHONPATH: backend
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        working-directory: backend
+        run: |
+          uv sync --all-groups
+
+      - name: Run Alembic migrations
+        working-directory: backend
+        run: |
+          uv run alembic upgrade head
+
+      - name: Run mutation check script (AGENTS.md Section 10)
+        run: |
+          chmod +x scripts/mutation_check.sh
+          PYTHON="${{ github.workspace }}/backend/.venv/bin/python" ./scripts/mutation_check.sh
+
+      - name: Upload Mutation Check Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report
+          path: docs/MUTATION_REPORT.md

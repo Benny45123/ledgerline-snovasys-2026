@@ -19,17 +19,23 @@ set -euo pipefail
 
 WORKSPACE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="${WORKSPACE_ROOT}/backend"
-VENV_PYTHON="${BACKEND_DIR}/.venv/bin/python"
+if [ -n "${PYTHON:-}" ]; then
+    VENV_PYTHON="${PYTHON}"
+elif [ -f "${BACKEND_DIR}/.venv/bin/python" ]; then
+    VENV_PYTHON="${BACKEND_DIR}/.venv/bin/python"
+else
+    VENV_PYTHON="$(command -v python3 || command -v python || true)"
+fi
+
+if [ -z "${VENV_PYTHON}" ] || [ ! -x "${VENV_PYTHON}" ]; then
+    echo "ERROR: Python interpreter not found (checked .venv and PATH)" >&2
+    exit 1
+fi
+
 REPORT_FILE="${WORKSPACE_ROOT}/docs/MUTATION_REPORT.md"
 SERVICE_PY="${BACKEND_DIR}/app/ledger/service.py"
 SERVICE_BACKUP="${SERVICE_PY}.bak"
 export PYTHONPATH="${BACKEND_DIR}"
-
-# Ensure venv python exists
-if [ ! -f "${VENV_PYTHON}" ]; then
-    echo "ERROR: Virtual environment python not found at ${VENV_PYTHON}" >&2
-    exit 1
-fi
 
 echo "============================================================"
 echo "Starting LedgerLine Mutation Check"
