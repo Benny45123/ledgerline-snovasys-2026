@@ -120,6 +120,13 @@ export default function AppPage() {
   // Toasts
   const [toasts, setToasts] = useState<Toast[]>([]);
 
+  // Prerender-safe client timestamp for chart calculation (Next.js 15 SSR compatibility)
+  const [clientNow, setClientNow] = useState<Date | null>(null);
+
+  useEffect(() => {
+    setClientNow(new Date());
+  }, []);
+
   // Add toast notification
   const addToast = useCallback((message: string, isError = false, detail?: string) => {
     const id = `t-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -584,7 +591,21 @@ export default function AppPage() {
 
   // Computed daily net movement for the last 12 calendar days from real ledger entries
   const dailyMovement = useMemo(() => {
-    const now = new Date();
+    if (!clientNow) {
+      return Array.from({ length: 12 }, (_, idx) => ({
+        dateStr: `day-${idx}`,
+        label: "-",
+        fullDate: "-",
+        netPaise: 0,
+        volumePaise: 0,
+        heightPct: 6,
+        isToday: idx === 11,
+        hasActivity: false,
+        tipText: "₹0.00",
+      }));
+    }
+
+    const now = clientNow;
     const days: {
       dateStr: string;
       label: string;
@@ -642,7 +663,7 @@ export default function AppPage() {
         tipText,
       };
     });
-  }, [statements]);
+  }, [statements, clientNow]);
 
   // Allowed tabs per role
   const allowedTabs: TabType[] = useMemo(() => {
