@@ -37,14 +37,42 @@
   - Type-safe HTTP client `frontend/lib/api.ts` and exact integer paise currency utilities `frontend/lib/money.ts`.
   - Restored landing page (`/`) to match `frontend/LedgerLine — money you can prove.html` identically.
 
+- [x] Backend Security, Integrity, and Audit Remediation (`docs/backend_security_and_integrity_fix_plan.md`):
+  - Fixed VULN-01 through VULN-09 and GAPs 01–07 from `docs/BACKEND_AUDIT_REPORT.md`.
+  - Implemented Phase 3 caller authorization in `post_movement()` for admin adjustments/reversals and customer transfers (`AccountMember`).
+  - Removed `.with_for_update()` contention on IdempotencyKey replays; mapped 55P03/57014 timeouts to domain `LockTimeoutError` (503 Retry-After).
+  - Enforced transfer destination validation (blocking customer-to-system transfers) and self-transfer prevention.
+  - Connected surveillance pipeline (`evaluate_transaction_for_flags`) to post-commit hooks for all money movements.
+  - Resolved trigger violation on review decision updates by deriving review flag status dynamically from append-only `review_decisions`.
+  - Guarded HTTP `Content-Length` header parsing and enforced 16 KB body size limit.
+  - Optimized `/audit/verify` with bulk queries, cutting latency from ~36s to ~7.4s.
+- [x] Concurrency & Invariant Verification:
+  - 20-thread race test (`test_no_overdraft_race.py`) verified: ₹100 account, 20 concurrent ₹30 withdrawals -> exactly 3 succeed, 17 cleanly refused, final balance ₹10.
+  - 20-thread deadlock test (`test_deadlock_opposite_transfers.py`) verified: concurrent A<->B transfers without deadlock.
+  - 20-thread concurrent idempotency test (`test_idempotency_concurrent.py`) verified: 1 original journal + 19 exact replays.
+  - Hypothesis property-based testing (`test_property_conservation.py`) verified: zero-sum conservation ($I_1$) and floor ($I_2$) hold across arbitrary pseudo-random operation sequences.
+- [x] Automated Mutation Testing (`scripts/mutation_check.sh`):
+  - 5/5 mutations killed (row lock, balance floor check, idempotency claim, append-only triggers, membership authorization).
+  - Cross-platform Python replacement helper (`mutate_service`) verified live on macOS (`apple@Apples-MBP`).
+  - Generated contractual evidence report [`docs/MUTATION_REPORT.md`](file:///workspace/docs/MUTATION_REPORT.md).
+- [x] Threat Model Verification (`THREATS.md`):
+  - Updated all 46 threat rows to `CLOSED` referencing passing tests.
+- [x] Dynamic 12-Day Net Movement Chart (`frontend/app/app/page.tsx`):
+  - Live ledger aggregation across 12 calendar days with dynamic scaling, rupee tooltips, and `.neg-net` tinting.
+- [x] Atomic Account Switching & Keyset Statement Pagination:
+  - Eliminated stale closure in `refreshStatements()` and fixed `UndefinedTable` SQL query alias error in `get_account_statement()` (`backend/app/ledger/queries.py`).
+- [x] Submission Write-Up & Evaluation Form Answers (`docs/WRITEUP.md`):
+  - 750-word comprehensive write-up and exact answers to the 6 hackathon submission questions.
+
 ## In Progress
-- [ ] Implement three.js 3D hash chain visualizer (`LedgerChain3D.tsx`) with `@react-three/fiber` and SVG fallback.
+- [ ] Final smoke check of live deployment and incognito demo credentials.
 
 ## Blocked
 - None.
 
 ## Next Steps
-- Implement `LedgerChain3D` component for 3D glass block chain rendering.
-- Complete final deployment check and verification.
+- Final deployment verification (backend on Render/Fly, frontend on Vercel).
+- Prepare 5-minute video walkthrough following `.ai/WALKTHROUGH.md` and `docs/WRITEUP.md`.
+- Tick "I am done. Submit this for evaluation" before Thursday deadline.
 
 

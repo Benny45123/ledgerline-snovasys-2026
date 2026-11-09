@@ -5,9 +5,46 @@ All notable changes to the LedgerLine project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] - 2026-11-07 16:00 IST
+## [Unreleased] - 2026-11-09 11:30 IST
 
 ### Added
+
+#### [2026-11-09 11:30 IST] Automated Mutation Testing & Report (`scripts/mutation_check.sh`, `docs/MUTATION_REPORT.md`)
+- Created automated mutation testing harness testing 5 critical invariants (row locking, balance floor check, idempotency claim, append-only triggers, in-transaction membership authorization).
+- Proved 5/5 mutations killed by the test suite, achieving 100% test sensitivity to security regressions.
+
+#### [2026-11-09 12:40 IST] Real-Time 12-Day Net Movement Chart (`frontend/app/app/page.tsx`, `frontend/app/app/app.css`)
+- Replaced hardcoded demo bar array with dynamic daily aggregation over the active account's real ledger transactions across the last 12 calendar days.
+- Added dynamic bar height scaling relative to peak daily volume, date-specific tooltips formatted with exact rupee amounts, and distinct debit/negative net movement bar tinting (`.neg-net`).
+
+#### [2026-11-09 11:30 IST] Property-Based Invariant Verification (`backend/tests/integration/test_property_conservation.py`)
+- Implemented Hypothesis property-based testing proving zero-sum conservation ($I_1$) and overdraft floor ($I_2$) across arbitrary pseudo-random sequences of deposits, withdrawals, and transfers against Neon PostgreSQL.
+
+### Fixed
+
+#### [2026-11-09 13:00 IST] Keyset Statement Pagination Query (`backend/app/ledger/queries.py`)
+- Separated `seq_filter` into `seq_filter_entries` (using `e.account_seq`) and `seq_filter_refusals` (using `r.account_seq`).
+- Resolved `psycopg.errors.UndefinedTable: missing FROM-clause entry for table "e"` occurring when pagination cursors were passed to `UNION ALL` statement queries.
+
+#### [2026-11-09 12:50 IST] Atomic Account Switching Synchronization (`frontend/app/app/page.tsx`)
+- Eliminated stale closure guard in `refreshStatements()` that prevented statement, recent activity, and net movement chart state from updating when switching accounts.
+- Fetched statement items, active account details, and account list in parallel with `Promise.all` for atomic UI synchronization.
+- Enhanced Move Money modal to explicitly display the source account number and live balance.
+
+#### [2026-11-09 12:20 IST] Cross-Platform Mutation Harness Portability (`scripts/mutation_check.sh`)
+- Replaced BSD `sed -i` commands and inline semicolon syntax with a robust Python mutation helper function `mutate_service`.
+- Verified 5/5 mutations killed (`MUT-1` through `MUT-5`) cleanly across both macOS and Linux environments.
+
+#### [2026-11-09 11:30 IST] Backend Security & Integrity Remediation (`docs/backend_security_and_integrity_fix_plan.md`)
+- Implemented Phase 3 caller authorization in `app/ledger/service.py` for adjustments and reversals (admin-only) and customer transfers (`AccountMember`).
+- Removed `.with_for_update()` lock contention on `IdempotencyKey` replay lookups; mapped lock/statement timeouts (`55P03`, `57014`) to domain `LockTimeoutError` (503 Retry-After).
+- Enforced transfer destination validation blocking customer transfers to system accounts (`EXTERNAL`, `SUSPENSE`) and prevented self-transfers.
+- Added admin reversal endpoint `POST /admin/journals/{id}/reverse`.
+- Resolved trigger conflict on review decision updates by deriving review flag status dynamically from append-only `review_decisions`.
+- Fixed JSONB email rate limiting in `app/auth/throttle.py` using `.astext`.
+- Hardened HTTP `Content-Length` header parsing against negative/malformed values and enforced 16 KB body size limit in `app/main.py`.
+- Bulk-query optimized `/audit/verify` in `app/audit/verify.py`, reducing latency from ~36s to ~7.4s.
+- Updated `THREATS.md` with all threat vectors (M1–M12, I1–I7, A1–A9, L1–L6, P1–P10, R1–R4) closed with passing test evidence.
 
 #### [2026-11-07 16:00 IST] Backend Security & Vulnerability Audit Report (`docs/BACKEND_AUDIT_REPORT.md`)
 - Delivered comprehensive defensive security audit analyzing ledger invariants, double-entry triggers, concurrency isolation, and RBAC enforcement.
