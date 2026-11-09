@@ -94,14 +94,14 @@ def post_movement(
             ON CONFLICT (user_id, key) DO NOTHING
             """
         )
-        res = db.execute(
+        res: Any = db.execute(
             claim_stmt,
             {"user_id": user_id, "key": idempotency_key, "request_hash": req_hash},
         )
 
         if res.rowcount == 0:
             # Key already exists: lock and inspect the existing key row
-            existing_key = (
+            existing_key: Any = (
                 db.query(IdempotencyKey)
                 .filter(IdempotencyKey.user_id == user_id, IdempotencyKey.key == idempotency_key)
                 .first()
@@ -130,26 +130,26 @@ def post_movement(
 
             # If the original was a refusal, re-raise the recorded refusal
             if existing_key.response_status == 409:
-                err_msg = existing_key.response_body.get("message", "Transaction refused.")
-                raise RefusalError(message=err_msg, code=existing_key.response_body.get("code", "refused"))
+                err_msg = str(existing_key.response_body.get("message", "Transaction refused."))
+                raise RefusalError(message=err_msg, code=str(existing_key.response_body.get("code", "refused")))
 
             if existing_key.response_status != 200:
                 raise ValidationError(message="Original request failed.")
 
             # Replay stored response
-            stored = existing_key.response_body
+            stored: Any = existing_key.response_body
             replayed_resp = MovementResponse(
-                journal_id=UUID(stored["journal_id"]),
-                kind=stored["kind"],
-                amount=stored["amount"],
+                journal_id=UUID(str(stored["journal_id"])),
+                kind=str(stored["kind"]),
+                amount=int(stored["amount"]),
                 status="posted",
                 entry=PostingEntryResponse(
-                    account_id=UUID(stored["entry"]["account_id"]),
-                    account_seq=stored["entry"]["account_seq"],
-                    amount=stored["entry"]["amount"],
-                    balance_after=stored["entry"]["balance_after"],
+                    account_id=UUID(str(stored["entry"]["account_id"])),
+                    account_seq=int(stored["entry"]["account_seq"]),
+                    amount=int(stored["entry"]["amount"]),
+                    balance_after=int(stored["entry"]["balance_after"]),
                 ),
-                created_at=datetime.fromisoformat(stored["created_at"]),
+                created_at=datetime.fromisoformat(str(stored["created_at"])),
             )
             return replayed_resp, True
 
@@ -375,17 +375,17 @@ def _record_refusal_and_commit(
     user_id: UUID,
     idempotency_key: str,
     request_id: str,
-    src_acc: Account,
-    dest_acc: Account,
+    src_acc: Any,
+    dest_acc: Any,
     amount: int,
     reason_code: str,
     now: datetime,
 ) -> None:
     """Commit an immutable refusal record into refused_attempts."""
-    seq = src_acc.next_seq
+    seq = int(src_acc.next_seq)
     prev_hash = bytes(src_acc.last_hash)
     entry_hash = compute_refusal_hash(
-        prev_hash, src_acc.id, seq, amount, src_acc.balance, reason_code, now
+        prev_hash, UUID(str(src_acc.id)), seq, amount, int(src_acc.balance), reason_code, now
     )
 
     refusal = RefusedAttempt(
@@ -410,7 +410,7 @@ def _record_refusal_and_commit(
     src_acc.last_hash = entry_hash
 
     # Save refusal response in idempotency_keys
-    idempotency_record = (
+    idempotency_record: Any = (
         db.query(IdempotencyKey)
         .filter(IdempotencyKey.user_id == user_id, IdempotencyKey.key == idempotency_key)
         .first()

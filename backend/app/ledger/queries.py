@@ -7,6 +7,7 @@ Counterparty account numbers are masked to ****1234 to preserve user privacy. Ke
 using account_seq prevents offset performance degradation and statement pagination drift.
 """
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
@@ -135,12 +136,13 @@ def get_account_statement(
 
     next_cursor = display_rows[-1].account_seq if (has_more and display_rows) else None
 
+    acc: Any = account
     return StatementResponse(
-        account_id=account.id,
-        currency=account.currency,
-        current_balance=account.balance,
-        overdraft_limit=account.overdraft_limit,
-        status=account.status,
+        account_id=acc.id,
+        currency=acc.currency,
+        current_balance=acc.balance,
+        overdraft_limit=acc.overdraft_limit,
+        status=acc.status,
         items=items,
         has_more=has_more,
         next_after=next_cursor,

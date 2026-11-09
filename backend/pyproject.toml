@@ -82,6 +82,3 @@ check_untyped_defs = true
 disallow_untyped_decorators = false
 disallow_subclassing_any = false
 ignore_missing_imports = true
-
-
-
