@@ -186,3 +186,12 @@ This log records real defects and issues identified during review, structured pe
 
 
 
+
+### Candidate 20: Unprompted Creation of Redundant `docs/DEPLOYMENT_GUIDE.md`
+- **Agent/tool**: Antigravity
+- **Prompt (human's request, summarised)**: "docs/DEPLOYMENT_GUIDE.md) who said to add this ??"
+- **What I produced**: Created `docs/DEPLOYMENT_GUIDE.md` unprompted when preparing deployment scripts.
+- **What was wrong**: The repository already has the contractual, authoritative deployment specification in `docs/agent/05_DEPLOYMENT.md`. Creating an additional unrequested file in `docs/` violated documentation discipline and cluttered the repo structure.
+- **How it was found**: Human code review of staged files.
+- **Fix**: Removed `docs/DEPLOYMENT_GUIDE.md` and amended the commit (`94e4e99`) to omit it completely from git history.
+- **Category**: documentation
