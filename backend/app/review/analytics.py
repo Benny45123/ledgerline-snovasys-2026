@@ -321,15 +321,14 @@ def forecast_cash_flow(db: Session, account_id: UUID, days: int = 30) -> dict[st
         lo = projected_30d - 1000000
 
     range_span = max(1, hi - lo)
-    range_pct = int(round(max(0.0, min(100.0, ((projected_30d - lo) / range_span) * 100.0))))
+    range_pct = int(max(0.0, min(100.0, ((projected_30d - lo) / range_span) * 100.0)))
 
     runway_days = None
     if daily_net_velocity < 0:
         available_liquidity = curr_bal + account.overdraft_limit
-        if available_liquidity > 0:
-            runway_days = available_liquidity // abs(daily_net_velocity)
+        runway_days = max(0, available_liquidity) // abs(daily_net_velocity)
 
-    vel_sign = "+" if daily_net_velocity >= 0 else "−"
+    vel_sign = "+" if daily_net_velocity >= 0 else "-"
     vel_status = "surplus" if daily_net_velocity >= 0 else "net burn"
     vel_label = f"{vel_sign}{format_paise(abs(daily_net_velocity))}/day ({vel_status})"
 
@@ -424,7 +423,7 @@ def search_ledger_transactions(db: Session, account_id: UUID, query_text: str) -
             "seq": e.account_seq,
             "kind": j.kind.capitalize(),
             "amount": e.amount,
-            "amount_formatted": format_paise(abs(e.amount)),
+            "amount_formatted": format_paise(e.amount),
             "balance_after": e.balance_after,
             "balance_after_formatted": format_paise(e.balance_after),
             "created_at": e.created_at.isoformat(),

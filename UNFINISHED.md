@@ -27,7 +27,7 @@
 - **Decision**: The backend runs against a single-region Neon PostgreSQL 16 cluster.
 - **Why It Was Cut**:
   1. **Split-Brain Risk**: Multi-master or multi-region distributed databases (e.g. CockroachDB, Spanner) introduce network partition split-brain anomalies and eventual consistency lag where balances can temporarily desynchronize.
-  2. **ACID Isolation**: PostgreSQL under `READ COMMITTED` with deterministic row locking (`SELECT ... FOR UPDATE ORDER BY id`) gives immediate, provable consistency with zero deadlocks. If the database goes down, transactions pause cleanly rather than moving money incorrectly.
+  2. **ACID Isolation**: PostgreSQL under `READ COMMITTED` with deterministic row locking (`SELECT ... ORDER BY id FOR UPDATE`) gives immediate, provable consistency with zero deadlocks. If the database goes down, transactions pause cleanly rather than moving money incorrectly.
 
 ---
 

@@ -281,13 +281,17 @@ export default function AppPage() {
 
   // Isolate AI Copilot session strictly per authenticated user to prevent cross-tenant leak
   const prevUserIdRef = useRef<string | null>(null);
+  const sessionGenRef = useRef(0);
+
   useEffect(() => {
     const currentUserId = user?.id ?? null;
     if (prevUserIdRef.current !== currentUserId) {
+      sessionGenRef.current += 1;
       setChatMessages([]);
       setChatInput("");
       setAccountInsights(null);
       setIsCopilotOpen(false);
+      setIsChatThinking(false);
       setSuggestedPills(DEFAULT_SUGGESTIONS);
       prevUserIdRef.current = currentUserId;
     }
@@ -296,15 +300,20 @@ export default function AppPage() {
   // Fetch account financial intelligence from server
   const fetchInsights = useCallback(async (accId: string) => {
     if (!accId) return;
+    const gen = sessionGenRef.current;
     try {
       setInsightsLoading(true);
       const data = await api.getAccountInsights(accId);
-      setAccountInsights(data);
+      if (gen === sessionGenRef.current) {
+        setAccountInsights(data);
+      }
     } catch (err) {
       // Local fallback is automatically computed if server insights fail
       console.warn("Server insights unavailable; utilizing deterministic fallback", err);
     } finally {
-      setInsightsLoading(false);
+      if (gen === sessionGenRef.current) {
+        setInsightsLoading(false);
+      }
     }
   }, []);
 
@@ -321,6 +330,7 @@ export default function AppPage() {
     setChatMessages(newMessages);
     setChatInput("");
     setIsChatThinking(true);
+    const gen = sessionGenRef.current;
 
     try {
       const historyPayload = chatMessages.slice(-6).map((m) => ({
@@ -334,6 +344,8 @@ export default function AppPage() {
         history: historyPayload,
       });
 
+      if (gen !== sessionGenRef.current) return;
+
       if (!resp.provider || resp.provider === "deterministic" || resp.provider.toLowerCase().includes("offline")) {
         setActiveProvider("Offline engine");
       } else {
@@ -345,7 +357,7 @@ export default function AppPage() {
         let modName = resp.model || "";
         if (modName.toLowerCase().includes("llama-3.3") || modName.toLowerCase().includes("llama3")) {
           modName = "Llama 3.3";
-        } else if (modName.toLowerCase().includes("flash") || modName.toLowerCase().includes("gemini-2.0")) {
+        } else if (modName.toLowerCase().includes("flash") || modName.toLowerCase().includes("gemini-2.0") || modName.toLowerCase().includes("gemini-2.5")) {
           modName = "Flash";
         } else if (modName === "ledgerline-analytics-v1" || !modName) {
           modName = "";
@@ -366,6 +378,7 @@ export default function AppPage() {
         },
       ]);
     } catch (err: unknown) {
+      if (gen !== sessionGenRef.current) return;
       const errorMsg = err instanceof Error ? err.message : "Failed to reach AI Copilot.";
       setChatMessages((prev) => [
         ...prev,
@@ -384,7 +397,9 @@ export default function AppPage() {
         },
       ]);
     } finally {
-      setIsChatThinking(false);
+      if (gen === sessionGenRef.current) {
+        setIsChatThinking(false);
+      }
     }
   };
 
@@ -457,15 +472,16 @@ export default function AppPage() {
   );
 
   const handleSelectAccount = async (acc: Account) => {
+    sessionGenRef.current += 1;
     if (activeAccount?.id !== acc.id) {
       setChatMessages([]);
       setChatInput("");
       setAccountInsights(null);
+      setIsChatThinking(false);
       setSuggestedPills(DEFAULT_SUGGESTIONS);
     }
     setActiveAccount(acc);
     setAdjAccount(acc.number);
-    fetchInsights(acc.id);
     await refreshStatements(acc.id);
   };
 
@@ -494,10 +510,12 @@ export default function AppPage() {
     try {
       setLoginLoading(true);
       const res = await api.login(authEmail, authPassword);
+      sessionGenRef.current += 1;
       setChatMessages([]);
       setChatInput("");
       setAccountInsights(null);
       setIsCopilotOpen(false);
+      setIsChatThinking(false);
       setSuggestedPills(DEFAULT_SUGGESTIONS);
       setUser(res.user);
       addToast(`Signed in as ${res.user.email} (${res.user.role})`);
@@ -511,6 +529,7 @@ export default function AppPage() {
 
   // Handle Logout
   const handleLogout = async () => {
+    sessionGenRef.current += 1;
     try {
       await api.logout();
     } catch {}
@@ -534,6 +553,7 @@ export default function AppPage() {
     setChatInput("");
     setAccountInsights(null);
     setIsCopilotOpen(false);
+    setIsChatThinking(false);
     setSuggestedPills(DEFAULT_SUGGESTIONS);
     addToast("Logged out successfully.");
   };
@@ -912,6 +932,16 @@ export default function AppPage() {
     return { label: "CRITICAL ANOMALY", color: "var(--bad)" };
   };
 
+  const escapeHtml = (s: string) =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const inlineMd = (s: string) => escapeHtml(s).replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+
   const renderMarkdown = (content: string) => {
     const lines = content.split("\n");
     const elements: React.ReactNode[] = [];
@@ -933,18 +963,18 @@ export default function AppPage() {
     lines.forEach((line, idx) => {
       const trimmed = line.trim();
       if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
-        const itemText = trimmed.slice(2).replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+        const itemText = inlineMd(trimmed.slice(2));
         currentList.push(itemText);
       } else if (trimmed.startsWith("### ") || trimmed.startsWith("## ")) {
         flushList();
-        const hText = trimmed.replace(/^#+\s*/, "").replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+        const hText = inlineMd(trimmed.replace(/^#+\s*/, ""));
         elements.push(
           <div key={`h-${idx}`} className="chat-h" dangerouslySetInnerHTML={{ __html: hText }} />
         );
       } else if (trimmed) {
         flushList();
         const isHighlight = trimmed.startsWith("**Answer:") || trimmed.startsWith("Answer:");
-        const pText = trimmed.replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+        const pText = inlineMd(trimmed);
         elements.push(
           <p
             key={`p-${idx}`}
@@ -1975,29 +2005,35 @@ export default function AppPage() {
                     }}
                   >
                     <h3>Conservation summary</h3>
-                    <span className="chip">HELD</span>
+                    <span className={`chip ${auditResult && !auditResult.verified ? "b" : auditResult ? "" : "n"}`}>
+                      {!auditResult ? "NOT VERIFIED" : auditResult.verified ? "HELD" : "BROKEN"}
+                    </span>
                   </div>
                   <small>Global balance across customer and system accounts.</small>
                   <div style={{ marginTop: "14px" }}>
                     <div className="ac">
                       <div className="ar2">
                         <span>Conservation invariant</span>
-                        <b className="chip">HELD</b>
+                        <b className={`chip ${auditResult && !auditResult.verified ? "b" : auditResult ? "" : "n"}`}>
+                          {!auditResult ? "NOT VERIFIED" : auditResult.verified ? "HELD" : "BROKEN"}
+                        </b>
                       </div>
                       <div className="ar2">
                         <span>Global balance sum</span>
-                        <b className="mono">₹0.00</b>
+                        <b className="mono">
+                          {auditResult ? formatPaise(auditResult.global_balance_sum) : "—"}
+                        </b>
                       </div>
                       <div className="ar2">
                         <span>Customer funds backed</span>
                         <b className="mono">
-                          {formatPaise(auditResult?.customer_balance_sum ?? (activeAccount?.balance ?? 0))}
+                          {auditResult ? formatPaise(auditResult.customer_balance_sum) : "—"}
                         </b>
                       </div>
                       <div className="ar2">
                         <span>Journals · postings</span>
                         <b className="mono">
-                          {auditResult?.total_journals_verified ?? statements.length} · {auditResult?.total_entries_verified ?? statements.length * 2}
+                          {auditResult ? `${auditResult.total_journals_verified} · ${auditResult.total_entries_verified}` : "—"}
                         </b>
                       </div>
                       <div className="ar2">
@@ -2452,7 +2488,9 @@ export default function AppPage() {
                 <button
                   className="ib"
                   onClick={() => {
+                    sessionGenRef.current += 1;
                     setChatMessages([]);
+                    setIsChatThinking(false);
                     setSuggestedPills(DEFAULT_SUGGESTIONS);
                   }}
                   aria-label="New chat"
@@ -2589,7 +2627,7 @@ export default function AppPage() {
                                     </small>
                                   </div>
                                   <b className={`mono ${isRef ? "" : isNeg ? "neg" : "pos"}`}>
-                                    {isRef ? row.amount_formatted : `${isNeg ? "−" : "+"}${row.amount_formatted}`}
+                                    {row.amount_formatted}
                                   </b>
                                 </a>
                               );
@@ -2598,32 +2636,38 @@ export default function AppPage() {
                         )}
 
                         {/* 4. Global Reconciliation Card (ccard) */}
-                        {Boolean(m.response?.data_payload?.reconciliation && (m.response?.intent === "reconciliation" || !activeAccount)) && (
-                          <div className="ac">
-                            <div className="ar2">
-                              <span>Conservation invariant</span>
-                              <b className="chip">HELD</b>
+                        {Boolean(m.response?.data_payload?.reconciliation && (m.response?.intent === "reconciliation" || !activeAccount)) && (() => {
+                          const r = m.response?.data_payload?.reconciliation;
+                          const isBal = Boolean(r?.is_balanced);
+                          return (
+                            <div className="ac">
+                              <div className="ar2">
+                                <span>Conservation invariant</span>
+                                <b className={`chip ${!isBal ? "b" : ""}`}>
+                                  {r?.conservation_invariant || (isBal ? "HELD" : "DISCREPANCY")}
+                                </b>
+                              </div>
+                              <div className="ar2">
+                                <span>Global balance sum</span>
+                                <b className="mono">{r?.global_balance_formatted || "—"}</b>
+                              </div>
+                              <div className="ar2">
+                                <span>Customer funds backed</span>
+                                <b className="mono">{r?.total_customer_funds_formatted || "—"}</b>
+                              </div>
+                              <div className="ar2">
+                                <span>Journals · postings</span>
+                                <b className="mono">
+                                  {r ? `${r.total_journals} · ${r.total_ledger_entries}` : "—"}
+                                </b>
+                              </div>
+                              <div className="ar2">
+                                <span>Open surveillance flags</span>
+                                <b className="mono">{r?.open_surveillance_flags ?? 0}</b>
+                              </div>
                             </div>
-                            <div className="ar2">
-                              <span>Global balance sum</span>
-                              <b className="mono">₹0.00</b>
-                            </div>
-                            <div className="ar2">
-                              <span>Customer funds backed</span>
-                              <b className="mono">{m.response?.data_payload?.reconciliation?.total_customer_funds_formatted}</b>
-                            </div>
-                            <div className="ar2">
-                              <span>Journals · postings</span>
-                              <b className="mono">
-                                {m.response?.data_payload?.reconciliation?.total_journals} · {m.response?.data_payload?.reconciliation?.total_ledger_entries}
-                              </b>
-                            </div>
-                            <div className="ar2">
-                              <span>Open surveillance flags</span>
-                              <b className="mono">{m.response?.data_payload?.reconciliation?.open_surveillance_flags}</b>
-                            </div>
-                          </div>
-                        )}
+                          );
+                        })()}
 
                         {/* Tool tag chip */}
                         <div className="tcs">

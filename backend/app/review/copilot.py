@@ -69,11 +69,11 @@ def detect_intent(message: str) -> str:
     msg = message.lower()
     if any(w in msg for w in ("reconcil", "zero-sum", "conservation", "balance sheet", "hash chain", "tamper")):
         return "reconciliation"
-    if any(w in msg for w in ("forecast", "predict", "runway", "30 days", "burn")):
+    if any(w in msg for w in ("forecast", "predict", "project", "runway", "30 days", "30-day", "burn")):
         return "forecast"
-    if any(w in msg for w in ("risk", "fraud", "anomaly", "suspicious", "unusual", "score")):
+    if any(w in msg for w in ("risk", "fraud", "anomal", "suspicious", "unusual", "score", "surveillance", "flag")):
         return "anomaly"
-    if any(w in msg for w in ("spending", "trend", "breakdown", "cash flow", "velocity", "overview", "balance", "insight")):
+    if any(w in msg for w in ("spending", "trend", "breakdown", "cash flow", "velocity", "overview", "balance", "insight", "inflow", "outflow")):
         return "insights"
     if any(w in msg for w in ("search", "find", "filter", "largest", "above", "highest", "refused", "failed", "transactions", "postings")):
         return "search"
@@ -135,7 +135,6 @@ def query_copilot(
 
     context_text_blocks.append(
         f"AUTHENTICATED CALLER SESSION:\n"
-        f"- Verified User: {user.email}\n"
         f"- Verified Server Role: {user.role.upper()} ({role_description})\n"
         f"- Session Authorization: Validated by cryptographic server session token\n"
     )
@@ -174,14 +173,21 @@ def query_copilot(
         # Build quarantined context text
         recent_tx_str = ""
         for tx in metrics.get("recent_transactions", [])[:5]:
-            clean_memo = sanitize_untrusted_text(tx.get("memo", ""))
-            recent_tx_str += f"- Seq #{tx['seq']} | {tx['kind']} | {tx['amount_formatted']} | After: {tx['balance_after_formatted']} | <untrusted_memo>{clean_memo}</untrusted_memo>\n"
+            clean_memo = sanitize_untrusted_text(str(tx.get("memo", "")))
+            clean_kind = sanitize_untrusted_text(str(tx.get("kind", "")))
+            recent_tx_str += (
+                f"- Seq #{tx['seq']} | <untrusted_kind>{clean_kind}</untrusted_kind> | "
+                f"{tx['amount_formatted']} | After: {tx['balance_after_formatted']} | "
+                f"<untrusted_memo>{clean_memo}</untrusted_memo>\n"
+            )
 
-        view_note = f" (Inspected by {user.role.upper()}: {user.email})" if user.role in ("admin", "auditor") else ""
+        clean_acc_name = sanitize_untrusted_text(target_account.name)
+        clean_acc_num = sanitize_untrusted_text(target_account.number)
+        view_note = f" (Inspected by authorized {user.role.upper()} role)" if user.role in ("admin", "auditor") else ""
         context_text_blocks.append(
             f"ACCOUNT FINANCIAL CONTEXT{view_note}:\n"
-            f"- Account Number: {target_account.number}\n"
-            f"- Account Name: {target_account.name}\n"
+            f"- Account Number: <untrusted_account_number>{clean_acc_num}</untrusted_account_number>\n"
+            f"- Account Name: <untrusted_account_name>{clean_acc_name}</untrusted_account_name>\n"
             f"- Current Balance: {metrics.get('current_balance_formatted')}\n"
             f"- Total Inflow (Credits): {metrics.get('total_credits_formatted')}\n"
             f"- Total Outflow (Debits): {metrics.get('total_debits_formatted')}\n"
@@ -261,7 +267,7 @@ def query_copilot(
         context_text_blocks.append(
             f"NATURAL LANGUAGE SEARCH RESULTS ({len(search_results)} matching entries):\n"
             + "\n".join(
-                f"- #{item.get('seq')}: {item.get('kind', item.get('type'))} of {item.get('amount_formatted')} on {item.get('created_at', '')[:10]} (Memo: <untrusted_memo>{sanitize_untrusted_text(item.get('memo', ''))}</untrusted_memo>)"
+                f"- #{item.get('seq')}: <untrusted_kind>{sanitize_untrusted_text(str(item.get('kind', item.get('type', ''))))}</untrusted_kind> of {item.get('amount_formatted')} on {item.get('created_at', '')[:10]} (Memo: <untrusted_memo>{sanitize_untrusted_text(str(item.get('memo', '')))}</untrusted_memo>)"
                 for item in search_results
             )
         )
@@ -272,7 +278,7 @@ def query_copilot(
         insights_cards = [
             InsightCard(
                 title="Daily velocity",
-                value=f"{'+' if vel_val >= 0 else '−'}{forecast['daily_net_velocity_formatted'].replace('-', '').replace('+', '')}",
+                value=f"{'+' if vel_val >= 0 else '-'}{forecast['daily_net_velocity_formatted'].replace('-', '').replace('+', '')}",
                 change="Surplus" if vel_val >= 0 else "Net burn",
                 sentiment="positive" if vel_val >= 0 else "warning",
             ),
@@ -359,15 +365,18 @@ def generate_deterministic_reply(
 
     if intent == "reconciliation" or (user.role in ("auditor", "admin") and "reconcil" in message.lower()):
         rec = data.get("reconciliation", {})
-        status_text = "holding strictly zero-sum" if rec.get("is_balanced") else "DISCREPANCY DETECTED"
+        is_bal = bool(rec.get("is_balanced"))
+        inv_status = str(rec.get("conservation_invariant", "UNKNOWN"))
+        verdict = "Zero-sum verified" if is_bal else "DISCREPANCY DETECTED"
+        status_text = "holding strictly zero-sum" if is_bal else "DISCREPANCY DETECTED"
         return (
-            f"**Answer: Global Conservation Invariant (I1) is HELD · Zero-sum verified.**\n\n"
+            f"**Answer: Global Conservation Invariant (I1) is {inv_status} · {verdict}.**\n\n"
             f"### Global Ledger Reconciliation Summary\n"
-            f"- **Conservation Invariant (I1):** **{rec.get('conservation_invariant', 'HELD')}** ({status_text})\n"
+            f"- **Conservation Invariant (I1):** **{inv_status}** ({status_text})\n"
             f"- **Global Balance Sum:** `{rec.get('global_balance_formatted', '₹0.00')}` (must strictly equal 0)\n"
             f"- **Total Customer Funds:** `{rec.get('total_customer_funds_formatted', '₹0.00')}` across {rec.get('total_accounts', 0)} accounts\n"
             f"- **Audited Volume:** {rec.get('total_journals', 0)} journals · {rec.get('total_ledger_entries', 0)} double-entry postings\n\n"
-            f"All journal debits and credits sum to zero at commit time. Tamper-evident hash chains guarantee append-only immutability."
+            f"All journal debits and credits sum to zero at commit time. Double-entry postings enforce zero-sum balance sheet parity."
         )
 
     if intent == "search" and "search_results" in data:
@@ -381,13 +390,14 @@ def generate_deterministic_reply(
             else:
                 memo_txt = f" · *\"{r['memo']}\"*" if r.get("memo") else ""
                 out += f"- **#{r['seq']} [{r['kind'].upper()}]:** **{r['amount_formatted']}** · Balance after: `{r['balance_after_formatted']}`{memo_txt}\n"
-        out += "\nAll entries verified against account hash chain sequence."
+        out += "\nEntries retrieved directly from immutable double-entry ledger sequence."
         return out
 
     if intent == "forecast" and "forecast" in data:
         fc = data["forecast"]
         burn_txt = "accumulating surplus" if fc.get("burn_status") == "surplus" else "net deficit"
-        runway_txt = f"**{fc.get('runway_days')} days**" if fc.get("runway_days") else "**Not at risk** (net surplus)"
+        runway_val = fc.get("runway_days")
+        runway_txt = f"**{runway_val} days**" if runway_val is not None else "**Not at risk** (net surplus)"
         return (
             f"**Answer: Projected Balance in 30 days is {fc.get('projected_balance_30d_formatted')} · {burn_txt.capitalize()}.**\n\n"
             f"### 30-Day Cash Flow Forecast\n"
@@ -412,13 +422,28 @@ def generate_deterministic_reply(
     # General Financial Insights
     if account and "metrics" in data:
         m = data["metrics"]
+        standing = []
+        if account.status == "frozen":
+            standing.append("Account is administratively FROZEN")
+        elif account.status == "closed":
+            standing.append("Account is CLOSED")
+        else:
+            standing.append("Account is in active status")
+
+        curr_balance = m.get("current_balance", 0)
+        if curr_balance < 0:
+            standing.append(f"operating in overdraft ({m.get('current_balance_formatted')})")
+        else:
+            standing.append("zero overdraft utilization")
+
+        standing_txt = ", ".join(standing) + "."
         return (
             f"**Answer: Available balance is {m.get('current_balance_formatted')} with net {m.get('net_cash_flow_formatted')} cash flow.**\n\n"
             f"### Financial Account Analysis: {account.name} (`{account.number}`)\n"
             f"- **Available Balance:** **{m.get('current_balance_formatted')}** (Overdraft limit: {m.get('overdraft_limit_formatted')})\n"
             f"- **Net Cash Flow:** **{m.get('net_cash_flow_formatted')}** across {m.get('transaction_count', 0)} postings\n"
             f"- **Past 7 Days:** Inflow **{m.get('last_7d_credits_formatted')}** | Outflow **{m.get('last_7d_debits_formatted')}**\n\n"
-            f"Account is in good standing with zero overdraft utilization."
+            f"{standing_txt}"
         )
 
     return (

@@ -28,10 +28,10 @@
   Because demo credentials (`admin@ledgerline.internal`, `holder1@ledgerline.internal`) are documented in the README, an external adversary from any IP can deliberately send 15 bad passwords for `admin@ledgerline.internal`. The challenge evaluator/judge attempting to log in from their own machine is then blocked with HTTP 429 for 15 minutes.
 * **The Real Harm:** Challenge organizers are locked out of seed accounts during evaluation.
 * **The Defensive Fix:**
-  - Separate IP throttling from account throttling:
-    1. Apply **HTTP 429 hard block strictly on `ip_fails >= 15`** (blocking the attacker's IP).
-    2. For `email_fails`, apply a **progressive sleep delay** (`min(2.0, 0.2 * (2 ** fails))`) to thwart online brute force without denying legitimate users from other IPs.
-    3. Never issue a global hard lockout on seed accounts.
+  - Layered account and IP anti-automation defenses:
+    1. Apply **HTTP 429 hard block strictly on `ip_fails >= 15`** (blocking the attacker's IP without locking out other IPs).
+    2. Apply **account-scoped anti-automation controls**: after 5 aggregate failed attempts across any IPs, require step-up verification (e.g. challenge token or CAPTCHA threshold) and progressive per-account response delays to thwart distributed multi-IP botnet guessing without hard-locking legitimate users out.
+    3. Never issue a global hard lockout on seed accounts so shared evaluator accounts remain accessible.
 
 ---
 
@@ -168,12 +168,13 @@
 
 ---
 
-### 15. Database Superuser / Internal DBA Silent Mutation
-* **The Attack:** A rogue administrator or compromised SQL credential updates `accounts.balance` or `ledger_entries.amount` directly in PostgreSQL.
-* **Defensive Resolution:**
-  - Database role separation: Runtime application role `ledgerline_app` has only `INSERT` and `SELECT` grants on ledger tables.
-  - Append-only database triggers raise exceptions on `UPDATE`, `DELETE`, or `TRUNCATE`.
-  - Cryptographic SHA-256 hash chains (`prev_hash || canonical_fields`) computed by database triggers; any altered row invalidates the chain during `GET /audit/verify`.
+### 15. Database Role Boundary & Superuser Tampering Limit
+* **The Threat:** Direct SQL mutation of `accounts.balance` or `ledger_entries.amount` via compromised credentials.
+* **Defensive Resolution & Boundary:**
+  - Database role separation: Runtime application role `ledgerline_app` has only `INSERT` and `SELECT` grants on ledger tables (no `UPDATE`, `DELETE`, or `TRUNCATE`).
+  - Append-only database triggers raise exceptions on any `UPDATE`, `DELETE`, or `TRUNCATE` attempted by application or migration roles.
+  - Cryptographic SHA-256 hash chains (`prev_hash || canonical_fields`) computed by database triggers detect unauthorized row modifications during `GET /audit/verify`.
+  - **Superuser Limit & Mitigation:** A true PostgreSQL superuser (`postgres`) possesses permissions to alter triggers (`DISABLE TRIGGER ALL`), rewrite rows, and recompute hash chains internally. Detecting a compromised superuser cannot be accomplished by in-database triggers alone; it requires external immutability controls: publishing periodic cryptographic hash chain root checkpoints to an independently protected external store (e.g., WORM storage, append-only Transparency Log, or external immutable audit service).
 
 ---
 

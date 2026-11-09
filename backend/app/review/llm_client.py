@@ -58,7 +58,11 @@ def call_groq_api(system_prompt: str, user_prompt: str, api_key: str, model: str
 
 def call_gemini_api(system_prompt: str, user_prompt: str, api_key: str, model: str) -> str:
     """Call Google Gemini REST API."""
-    url = f"{GEMINI_BASE_URL}/{model}:generateContent?key={api_key}"
+    url = f"{GEMINI_BASE_URL}/{model}:generateContent"
+    headers = {
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json",
+    }
     combined_prompt = f"{system_prompt}\n\n---\nUSER INQUIRY AND CONTEXT:\n{user_prompt}"
     payload = {
         "contents": [
@@ -72,7 +76,7 @@ def call_gemini_api(system_prompt: str, user_prompt: str, api_key: str, model: s
         },
     }
     with httpx.Client(timeout=15.0) as client:
-        resp = client.post(url, json=payload)
+        resp = client.post(url, headers=headers, json=payload)
         resp.raise_for_status()
         data = resp.json()
         candidates = data.get("candidates", [])
@@ -110,7 +114,8 @@ def synthesize_with_llm(
             reply = call_groq_api(system_prompt, user_prompt, groq_key, settings.GROQ_MODEL)
             return reply, "groq", settings.GROQ_MODEL
         except Exception as e:
-            logger.info("groq_synthesis_fallback", error=str(e))
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            logger.info("groq_synthesis_fallback", error_type=type(e).__name__, status_code=status)
 
     # 2. Try Gemini if configured
     gemini_key = settings.GEMINI_API_KEY or (settings.LLM_API_KEY if settings.LLM_PROVIDER == "gemini" else None)
@@ -119,6 +124,7 @@ def synthesize_with_llm(
             reply = call_gemini_api(system_prompt, user_prompt, gemini_key, settings.GEMINI_MODEL)
             return reply, "gemini", settings.GEMINI_MODEL
         except Exception as e:
-            logger.info("gemini_synthesis_fallback", error=str(e))
+            status = getattr(getattr(e, "response", None), "status_code", None)
+            logger.info("gemini_synthesis_fallback", error_type=type(e).__name__, status_code=status)
 
     return None, None, None
