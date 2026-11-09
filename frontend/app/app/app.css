@@ -432,6 +432,14 @@
   background: var(--acc);
 }
 
+.app-root .chart i.neg-net {
+  background: color-mix(in srgb, var(--bad) 45%, var(--line));
+}
+
+.app-root .chart i.neg-net:hover {
+  background: var(--bad);
+}
+
 .app-root .chart .tip {
   position: absolute;
   bottom: calc(100% + 8px);

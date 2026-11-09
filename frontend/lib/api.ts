@@ -238,12 +238,13 @@ export const api = {
 
   async getStatement(
     accountId: string,
-    params: { limit?: number; after?: number; kind?: string } = {}
+    params: { limit?: number; after?: number; kind?: string; order?: "asc" | "desc" } = {}
   ): Promise<StatementResponse> {
     const query = new URLSearchParams();
     if (params.limit) query.set("limit", params.limit.toString());
     if (params.after) query.set("after", params.after.toString());
     if (params.kind && params.kind !== "all") query.set("kind", params.kind);
+    if (params.order) query.set("order", params.order);
 
     const path = `/accounts/${accountId}/statement${query.toString() ? `?${query.toString()}` : ""}`;
     const { data } = await request<StatementResponse>(path);
@@ -324,6 +325,19 @@ export const api = {
     return { result: { ...data, is_replayed: isReplayed }, isReplayed };
   },
 
+  async reverseJournal(
+    journalId: string,
+    reason: string,
+    idempotencyKey?: string
+  ): Promise<{ result: MovementResponse; isReplayed: boolean }> {
+    const { data, isReplayed } = await request<MovementResponse>(`/admin/journals/${journalId}/reverse`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+      idempotencyKey,
+    });
+    return { result: { ...data, is_replayed: isReplayed }, isReplayed };
+  },
+
   // Audit
   async verifyAudit(): Promise<AuditVerification> {
     const { data } = await request<AuditVerification>("/audit/verify");
@@ -338,7 +352,7 @@ export const api = {
 
   async decideReviewFlag(
     flagId: number,
-    decision: "approved" | "dismissed",
+    decision: "approve" | "approved" | "dismiss" | "dismissed" | "escalate",
     reason: string
   ): Promise<void> {
     await request(`/review/flags/${flagId}/decision`, {
