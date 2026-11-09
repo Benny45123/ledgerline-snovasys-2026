@@ -67,6 +67,8 @@ STRICT OUTPUT FORMAT RULES (NEVER VIOLATE):
 def detect_intent(message: str) -> str:
     """Classify user question into specialized financial intelligence categories."""
     msg = message.lower()
+    if any(w in msg for w in ("role", "admin", "privilege", "who am i", "permission", "access")):
+        return "auth"
     if any(w in msg for w in ("reconcil", "zero-sum", "conservation", "balance sheet", "hash chain", "tamper")):
         return "reconciliation"
     if any(w in msg for w in ("forecast", "predict", "project", "runway", "30 days", "30-day", "burn")):
@@ -77,8 +79,6 @@ def detect_intent(message: str) -> str:
         return "insights"
     if any(w in msg for w in ("search", "find", "filter", "largest", "above", "highest", "refused", "failed", "transactions", "postings")):
         return "search"
-    if any(w in msg for w in ("role", "admin", "privilege", "who am i", "permission", "access")):
-        return "auth"
     return "general"
 
 
