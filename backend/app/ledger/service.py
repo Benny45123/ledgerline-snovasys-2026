@@ -20,7 +20,7 @@ from uuid import UUID
 
 from psycopg.errors import LockNotAvailable, QueryCanceled
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -188,9 +188,36 @@ def post_movement(
                 db.add(sec_event)
                 db.commit()
                 raise ForbiddenError("Only administrators may execute balance adjustments or reversals.")
+
+            if kind == "reversal" and reverses_journal_id:
+                # Lock original journal to prevent concurrent duplicate reversals
+                orig_journal = (
+                    db.query(Journal)
+                    .filter(Journal.id == reverses_journal_id)
+                    .with_for_update()
+                    .first()
+                )
+                if not orig_journal:
+                    db.rollback()
+                    raise NotFoundError("Original journal not found.")
+                if orig_journal.kind == "reversal":
+                    db.rollback()
+                    raise ValidationError("Cannot reverse a reversal journal.")
+
+                already_reversed = (
+                    db.query(Journal)
+                    .filter(Journal.reverses_journal_id == reverses_journal_id)
+                    .first()
+                )
+                if already_reversed:
+                    db.rollback()
+                    raise ValidationError("Journal has already been reversed.")
         else:
             # Customer-initiated money movements
-            if src_acc.kind == "customer":
+            if kind == "transfer":
+                if src_acc.kind != "customer" or dest_acc.kind != "customer":
+                    db.rollback()
+                    raise NotFoundError("Account not found.")
                 membership = (
                     db.query(AccountMember)
                     .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
@@ -207,8 +234,29 @@ def post_movement(
                     db.add(sec_event)
                     db.commit()
                     raise NotFoundError("Account not found.")
-
-            if kind == "deposit" and dest_acc.kind == "customer":
+            elif kind == "withdrawal":
+                if src_acc.kind != "customer" or dest_acc.kind != "external":
+                    db.rollback()
+                    raise NotFoundError("Account not found.")
+                membership = (
+                    db.query(AccountMember)
+                    .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
+                    .first()
+                )
+                if not membership:
+                    sec_event = SecurityEvent(
+                        actor_user_id=user_id,
+                        event="unauthorized_account_access",
+                        detail={"account_id": str(src_acc.id), "action": kind},
+                        request_id=request_id,
+                    )
+                    db.add(sec_event)
+                    db.commit()
+                    raise NotFoundError("Account not found.")
+            elif kind == "deposit":
+                if src_acc.kind != "external" or dest_acc.kind != "customer":
+                    db.rollback()
+                    raise NotFoundError("Account not found.")
                 membership = (
                     db.query(AccountMember)
                     .filter(AccountMember.account_id == dest_acc.id, AccountMember.user_id == user_id)
@@ -216,6 +264,9 @@ def post_movement(
                 )
                 if not membership:
                     raise NotFoundError("Account not found.")
+            else:
+                db.rollback()
+                raise ValidationError(f"Invalid movement kind: {kind}")
 
         # Phase 4: Validate Account Status
         now = datetime.now(UTC)
@@ -357,6 +408,11 @@ def post_movement(
     except (LockNotAvailable, QueryCanceled) as e:
         db.rollback()
         raise LockTimeoutError() from e
+    except IntegrityError as e:
+        db.rollback()
+        if "uq_journals_reverses_journal_id" in str(e):
+            raise ValidationError("Journal has already been reversed.") from e
+        raise
     except (DBAPIError, OperationalError) as e:
         db.rollback()
         # Detect PostgreSQL lock timeout (55P03) or statement timeout (57014)

@@ -18,11 +18,13 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import BYTEA, JSONB, UUID
 from sqlalchemy.orm import relationship
@@ -108,6 +110,12 @@ class Journal(Base):
             name="valid_journal_kind",
         ),
         UniqueConstraint("initiated_by", "idempotency_key", name="uq_journal_initiator_key"),
+        Index(
+            "uq_journals_reverses_journal_id",
+            "reverses_journal_id",
+            unique=True,
+            postgresql_where=text("reverses_journal_id IS NOT NULL"),
+        ),
     )
 
 

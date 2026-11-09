@@ -279,6 +279,18 @@ def transfer(
     db: Session = Depends(get_db),
 ) -> MovementResponse:
     """Transfer funds from caller's account to any active recipient account by number."""
+    src_acc = db.query(Account).filter(Account.id == req.from_account_id).first()
+    if not src_acc or src_acc.kind != "customer":
+        raise NotFoundError("Account not found.")
+
+    is_member = (
+        db.query(AccountMember)
+        .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == current_user.id)
+        .first()
+    )
+    if not is_member:
+        raise NotFoundError("Account not found.")
+
     dest_acc = db.query(Account).filter(Account.number == req.to_account_number).first()
     if not dest_acc or dest_acc.status != "active" or dest_acc.kind != "customer":
         raise InvalidDestinationError()

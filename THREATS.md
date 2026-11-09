@@ -18,6 +18,7 @@
 | M10 | Balance cache drifts from ledger                                  | Account hash chain verify + `account_balance_matches_ledger` trigger       | `tests/integration/test_property_conservation.py`                    | CLOSED |
 | M11 | Lock wait stalls the system                                       | `lock_timeout` (3s), 503 + Retry-After, no partial write                   | `app/ledger/service.py::LockTimeoutError` (status 503)               | CLOSED |
 | M12 | Connection drops after commit, client retries                     | Idempotency replay returns first result with `Idempotent-Replayed: true`   | `tests/integration/test_idempotency.py`                             | CLOSED |
+| M13 | Concurrent admin reversal requests race and duplicate reversals   | Row lock on original journal, in-transaction recheck, and partial unique index on `reverses_journal_id` | `tests/concurrency/test_concurrent_reversals.py`                   | CLOSED |
 
 ## B. Exactly-once
 
@@ -43,7 +44,8 @@
 | A6 | Authorisation checked before the lock, membership changes in between | Check inside tx after lock in `post_movement`                                                                                               | `tests/security/test_authorization.py`                   | CLOSED |
 | A7 | Stolen/expired/revoked session                                       | 256-bit hashed opaque tokens, expiry, revocation, logout                                                                                    | `tests/unit/test_session_security.py`                    | CLOSED |
 | A8 | Credential stuffing                                                  | Argon2id, progressive login delay, security_events; no hard lockout (accepted trade-off: lockout would let an attacker deny the seed users) | `app/auth/throttle.py` (JSONB `.astext`)                 | CLOSED |
-| A9 | Privilege escalation via role change endpoint                        | No role-change endpoint for non-admin; admin changes are logged                                                                             | `app/auth/dependencies.py`                               | CLOSED |
+| A9  | Privilege escalation via role change endpoint                        | No role-change endpoint for non-admin; admin changes are logged                                                                             | `app/auth/dependencies.py`                               | CLOSED |
+| A10 | Holder debits system accounts (EXTERNAL/SUSPENSE) via /transfers     | Strict account kind pairing in `post_movement` & route: transfers strictly between customer accounts with caller membership verified      | `tests/security/test_authorization.py`                   | CLOSED |
 
 ## D. Ledger tampering
 
