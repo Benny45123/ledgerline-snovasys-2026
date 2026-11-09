@@ -110,4 +110,79 @@ This log records real defects and issues identified during review, structured pe
 - **Fix**: Removed raw cursor strings from statement view (showing clean centered "Load more" button only when more records exist); removed tech jargon from auth footer; and re-aligned `.app-root .pre` using CSS `top: 50%; transform: translateY(-50%); line-height: 1` and `padding-left: 38px`.
 - **Category**: frontend
 
+## 2026-11-09 — Backend Security & Integrity Remediation (Audit Fixes & Invariant Proofs)
+
+### Candidate 11: Cross-Platform Darwin Mach-O Binaries in Linux Workspace Virtualenv
+- **Prompt (human's request, summarised)**: "cancel installations use workspace venv"
+- **What I produced**: Attempted running pytest inside the repository's `.venv`.
+- **What was wrong**: `.venv` had been initialized on macOS and contained Darwin `.so` files and Mach-O executables, crashing Python with `ImportError: cannot import name 'ArgsKwargs'` on `pydantic_core` and `psycopg`.
+- **How it was found**: Live test execution in container.
+- **Fix**: Reconfigured `pyvenv.cfg` for Linux container Python 3.14 and installed Linux x86_64 manylinux wheels into the workspace virtualenv.
+- **Category**: environment
+
+### Candidate 12: Unreverted Database Row Tampering in Cryptographic Hash Chain Test
+- **Prompt (human's request, summarised)**: Implement approved backend security and integrity fix plan.
+- **What I produced**: `test_hash_chain.py` updated a ledger row amount to 999999 to test that `/audit/verify` detects tampering, but did not restore it.
+- **What was wrong**: The corrupted row remained in the persistent Neon database, causing subsequent `test_conservation.py` runs to fail with balance equation discrepancies.
+- **How it was found**: Running `test_conservation.py` after `test_hash_chain.py`.
+- **Fix**: Wrapped test row tampering in a `try...finally` block to restore the original amount and prev_hash before the test completes.
+- **Category**: testing
+
+### Candidate 13: N+1 Network Query Inefficiency in verify_ledger_integrity()
+- **Prompt (human's request, summarised)**: Run property-based conservation tests with Hypothesis.
+- **What I produced**: `verify_ledger_integrity()` queried `LedgerEntry` and `RefusedAttempt` individually inside a loop for each account.
+- **What was wrong**: Over WAN to Neon PostgreSQL, 51 accounts resulted in 102 individual network round-trips taking ~36 seconds per verification, causing Hypothesis tests to stall.
+- **How it was found**: Profiling test run duration.
+- **Fix**: Refactored `verify_ledger_integrity()` to bulk-query all entries and refusals sorted by `account_id, account_seq` and grouped them in-memory using `defaultdict(list)`, cutting execution time by over 80% to ~7.4 seconds.
+- **Category**: performance
+
+### Candidate 14: Postgres Superuser System Trigger Permission Error in Mutation Script
+- **Prompt (human's request, summarised)**: Run `scripts/mutation_check.sh`.
+- **What I produced**: `ALTER TABLE ledger_entries DISABLE TRIGGER ALL;` in mutation check MUT-4.
+- **What was wrong**: On Neon PostgreSQL, non-superuser roles cannot disable system triggers (e.g. foreign key constraint triggers), raising `InsufficientPrivilege: "RI_ConstraintTrigger_c_24863" is a system trigger`.
+- **How it was found**: Executing `scripts/mutation_check.sh`.
+- **Fix**: Explicitly disabled the user-defined append-only trigger `ALTER TABLE ledger_entries DISABLE TRIGGER trg_ledger_entries_append_only_rows;`.
+- **Category**: testing
+
+### Candidate 15: Missing In-Transaction Authorization Unit Test for post_movement()
+- **Prompt (human's request, summarised)**: Run `scripts/mutation_check.sh` and ensure all 5 mutations are killed.
+- **What I produced**: MUT-5 removed `if not membership:` in `app/ledger/service.py`, but `test_authorization.py` unexpectedly passed.
+- **What was wrong**: `test_authorization.py` only invoked HTTP endpoints where the outer route check intercepted the request before reaching `post_movement()`, meaning the in-transaction defense had no direct sensitivity test.
+- **How it was found**: Mutation test MUT-5 survived.
+- **Fix**: Added `test_post_movement_enforces_membership` to `tests/security/test_authorization.py` to directly call `post_movement()` with an unauthorized holder, successfully killing MUT-5.
+- **Category**: testing
+
+### Candidate 16: BSD Sed Incompatibility & Python Semicolon Syntax in Mutation Script
+- **Prompt (human's request, summarised)**: "scripts/mutation_check.sh sed: 1: command a expects \ followed by text" / "SyntaxError: invalid syntax"
+- **What I produced**: Initial mutation script used GNU `sed -i` commands and later inline Python with semicolons (`target = '...'; with open(...) as f:`).
+- **What was wrong**: On macOS (Darwin), BSD `sed` misinterprets `sed -i` arguments, and Python grammar forbids compound statements (`with`) following a semicolon on the same line, crashing the mutation harness.
+- **How it was found**: Human execution on macOS MacBook Pro (`apple@Apples-MBP`).
+- **Fix**: Replaced `sed` with a dedicated `mutate_service` bash function invoking Python with a clean multi-line block and `sys.argv` arguments, running 100% portably on macOS and Linux with 5/5 mutations killed.
+- **Category**: tooling
+
+### Candidate 17: SQL Alias Leak in UNION ALL Statement Keyset Pagination
+- **Prompt (human's request, summarised)**: "ProgrammingError: (psycopg.errors.UndefinedTable) missing FROM-clause entry for table 'e'"
+- **What I produced**: In `backend/app/ledger/queries.py::get_account_statement()`, the pagination filter was constructed as `seq_filter = f"AND e.account_seq {seq_op} :after_seq"` and injected into both branches of the `UNION ALL` statement.
+- **What was wrong**: In the second query branch (`SELECT ... FROM refused_attempts r`), table alias `e` was out of scope. PostgreSQL rejected the query with `psycopg.errors.UndefinedTable`, triggering an HTTP 500 when users clicked "Load more" to fetch additional statement pages.
+- **How it was found**: User clicking "Load more" in the live statement UI.
+- **Fix**: Separated the filter into `seq_filter_entries` (using `e.account_seq`) and `seq_filter_refusals` (using `r.account_seq`), ensuring valid SQL identifiers for both sides of the `UNION ALL`.
+- **Category**: backend
+
+### Candidate 18: Asynchronous State Stale Closure on Dashboard Account Switching
+- **Prompt (human's request, summarised)**: "when i switch the balance thing and overdraft limit only changes the credits received , recent activity , live ledger should be changed"
+- **What I produced**: `refreshStatements()` included an asynchronous state comparison guard: `if (!accId || (activeAccount && targetId === activeAccount.id))`.
+- **What was wrong**: When switching accounts via `handleSelectAccount()`, `activeAccount` inside the async callback's closure remained bound to the old account. As a result, the statement items, recent activity list, and daily movement chart were skipped and remained frozen on the previously active account.
+- **How it was found**: User testing account switching between Reserve and Operating accounts.
+- **Fix**: Removed the stale closure guard and used `Promise.all` to fetch the account details, updated statements, and account list concurrently, updating state atomically and synchronously.
+- **Category**: frontend
+
+### Candidate 19: Static Mock Values for 12-Day Net Movement Chart
+- **Prompt (human's request, summarised)**: "Net movement Daily, last 12 days (illustrative) this was demo ryt can you make it the exact net movement from the real transfers"
+- **What I produced**: The dashboard's 12-day net movement bar chart was rendered using a static mock array `DEMO_NET_MOVEMENTS`.
+- **What was wrong**: The chart did not reflect actual ledger activity. Users performing deposits, withdrawals, or transfers saw no change in the chart bars.
+- **How it was found**: User visual inspection of dashboard charts.
+- **Fix**: Implemented dynamic `dailyMovement` aggregation using `useMemo` over all confirmed ledger entries from the active account across the last 12 calendar days. Scaled bar heights dynamically relative to the max absolute daily delta, added exact rupee amount tooltips, and styled debits with `.neg-net` tinting.
+- **Category**: frontend
+
+
 

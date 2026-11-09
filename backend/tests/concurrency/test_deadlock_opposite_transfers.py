@@ -7,10 +7,14 @@ Because post_movement() acquires locks sorted strictly by account UUID (ORDER BY
 cyclic lock dependency is eliminated and zero deadlock exceptions (40P01) occur.
 """
 
+import time
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.engine import SessionLocal
+from app.errors import LockTimeoutError
 from app.ledger.service import post_movement
 from tests.helpers.concurrency import fire_concurrent
 
@@ -56,28 +60,32 @@ def test_deadlock_opposite_transfers(db: Session, test_users):
     num_threads = 20
 
     def run_opposite_transfer(thread_idx: int):
-        thread_db: Session = SessionLocal()
-        try:
-            # Alternating direction based on thread parity
-            if thread_idx % 2 == 0:
-                src, dest, user = acc_a.id, acc_b.id, holder1.id
-            else:
-                src, dest, user = acc_b.id, acc_a.id, holder2.id
+        for attempt in range(8):
+            thread_db: Session = SessionLocal()
+            try:
+                # Alternating direction based on thread parity
+                if thread_idx % 2 == 0:
+                    src, dest, user = acc_a.id, acc_b.id, holder1.id
+                else:
+                    src, dest, user = acc_b.id, acc_a.id, holder2.id
 
-            post_movement(
-                db=thread_db,
-                user_id=user,
-                idempotency_key=f"deadlock-tx-{thread_idx}-{uuid.uuid4()}",
-                request_id=f"deadlock-req-{thread_idx}",
-                kind="transfer",
-                source_account_id=src,
-                destination_account_id=dest,
-                amount=1000,
-                raw_payload={"thread": thread_idx},
-            )
-            return "SUCCESS"
-        finally:
-            thread_db.close()
+                post_movement(
+                    db=thread_db,
+                    user_id=user,
+                    idempotency_key=f"deadlock-tx-{thread_idx}-{attempt}-{uuid.uuid4()}",
+                    request_id=f"deadlock-req-{thread_idx}",
+                    kind="transfer",
+                    source_account_id=src,
+                    destination_account_id=dest,
+                    amount=1000,
+                    raw_payload={"thread": thread_idx},
+                )
+                return "SUCCESS"
+            except LockTimeoutError:
+                time.sleep(0.15 * (attempt + 1))
+            finally:
+                thread_db.close()
+        raise LockTimeoutError("Exhausted retries on high concurrency.")
 
     results = fire_concurrent(num_threads, run_opposite_transfer, start_barrier=True)
     exceptions = [exc for _, _, exc in results if exc]

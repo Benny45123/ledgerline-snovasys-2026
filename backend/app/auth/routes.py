@@ -6,9 +6,10 @@ when an email is not found. Successful logins emit a 256-bit opaque token and re
 Logout immediately revokes the session hash in the database, preventing session reuse.
 """
 
-from typing import Optional
+
 from fastapi import APIRouter, Depends, Header, Request
 from sqlalchemy.orm import Session
+
 from app.auth.passwords import dummy_verify, verify_password
 from app.auth.schemas import LoginRequest, LoginResponse, UserResponse
 from app.auth.sessions import create_session, revoke_session
@@ -61,7 +62,7 @@ def login(
 
 @router.post("/logout")
 def logout(
-    authorization: Optional[str] = Header(None),
+    authorization: str | None = Header(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict[str, str]:

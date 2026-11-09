@@ -6,8 +6,9 @@ All input schemas prohibit extra attributes (extra="forbid") and enforce strict 
 """
 
 from datetime import datetime
-from typing import Any, List, Literal, Optional
+from typing import Any
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
@@ -26,8 +27,8 @@ class CreateAccountRequest(StrictAccountBaseModel):
         if isinstance(v, str):
             try:
                 return UUID(v)
-            except ValueError:
-                raise ValueError("Invalid UUID format")
+            except ValueError as e:
+                raise ValueError("Invalid UUID format") from e
         return v
 
 
@@ -44,4 +45,4 @@ class AccountResponse(StrictAccountBaseModel):
 
 
 class AccountListResponse(StrictAccountBaseModel):
-    accounts: List[AccountResponse]
+    accounts: list[AccountResponse]

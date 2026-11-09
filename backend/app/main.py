@@ -11,11 +11,13 @@ Security features:
 """
 
 from typing import Any
+
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
+
 from app.accounts.routes import router as accounts_router
 from app.audit.routes import router as audit_router
 from app.auth.routes import router as auth_router
@@ -50,24 +52,49 @@ app.add_middleware(
 @app.middleware("http")
 async def security_and_tracing_middleware(request: Request, call_next: Any) -> Response:
     """Attach request tracing, body length limits, and security headers."""
-    # Enforce request body size limit of 16 KB
-    content_length = request.headers.get("content-length")
-    if content_length and int(content_length) > 16 * 1024:
-        return JSONResponse(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            content={
-                "error": {
-                    "code": "body_too_large",
-                    "message": "Request payload exceeds 16 KB limit.",
-                    "request_id": request.headers.get("x-request-id", "unknown"),
-                }
-            },
-        )
-
     # Establish or read request ID
     req_id = request.headers.get("x-request-id")
     if not req_id:
         req_id = get_request_id(None)
+
+    # Enforce request body size limit of 16 KB
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            length_val = int(content_length)
+            if length_val < 0:
+                return JSONResponse(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    content={
+                        "error": {
+                            "code": "bad_request",
+                            "message": "Invalid Content-Length header.",
+                            "request_id": req_id,
+                        }
+                    },
+                )
+            if length_val > 16 * 1024:
+                return JSONResponse(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    content={
+                        "error": {
+                            "code": "body_too_large",
+                            "message": "Request payload exceeds 16 KB limit.",
+                            "request_id": req_id,
+                        }
+                    },
+                )
+        except ValueError:
+            return JSONResponse(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                content={
+                    "error": {
+                        "code": "bad_request",
+                        "message": "Invalid Content-Length header.",
+                        "request_id": req_id,
+                    }
+                },
+            )
 
     response: Response = await call_next(request)
 

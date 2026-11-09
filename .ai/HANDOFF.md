@@ -1,6 +1,40 @@
 # Agent Handoff Notes
 
-### Latest: 2026-11-07 16:00 IST — Backend Security & Bug Audit Report
+### Latest: 2026-11-09 13:00 IST — Statement Keyset Pagination, Account Sync, & Net Movement Chart
+- **Files Touched**:
+  - `backend/app/ledger/queries.py`: Fixed `psycopg.errors.UndefinedTable: missing FROM-clause entry for table "e"` by using `seq_filter_entries` (`e.account_seq`) for entries and `seq_filter_refusals` (`r.account_seq`) for refusals in the keyset-paginated `UNION ALL` query.
+  - `frontend/app/app/page.tsx`: Fixed stale closure in `refreshStatements()` to ensure atomic UI updates across balance, statement, recent activity, and KPI cards when switching accounts; added real ledger transaction aggregation for 12-day net movement chart; added explicit source account display with live balance in Move Money modal.
+  - `frontend/app/app/app.css`: Added styles for negative net daily movement bars (`.neg-net`).
+  - `scripts/mutation_check.sh`: Ported mutation testing harness using Python multi-line replacement helper `mutate_service` for macOS BSD sed compatibility.
+  - `docs/WRITEUP.md`: Created comprehensive 750-word system write-up and exact answers to the 6 submission questions.
+  - `.ai/candidates.md`: Logged Candidates 16–19 (BSD sed syntax, SQL alias leak, stale closure in account switching, static mock chart).
+
+### Previous: 2026-11-09 11:30 IST — Backend Security & Integrity Remediation & Verification
+- **Artifacts Created**:
+  - `docs/backend_security_and_integrity_fix_plan.md`: Comprehensive remediation plan addressing VULN-01 to VULN-09, TEST-01, and GAPs 01–07.
+  - `scripts/mutation_check.sh`: Automated mutation check harness.
+  - `docs/MUTATION_REPORT.md`: Mutation check results proving 5/5 core mutations killed.
+- **Files Touched**:
+  - `backend/app/ledger/service.py`: Added in-transaction caller authorization for adjustments and reversals (admin-only) and customer transfers (`AccountMember`), removed redundant `.with_for_update()` on IdempotencyKey replay query to eliminate contention, mapped lock/statement timeouts (`55P03`, `57014`) to domain `LockTimeoutError` (503 Retry-After).
+  - `backend/app/accounts/routes.py`: Blocked transfers to system accounts (`EXTERNAL`, `SUSPENSE`), prevented self-transfers, restricted deposits to holders, wired `evaluate_transaction_for_flags` to all post-commit money movements, added admin reversal route `POST /admin/journals/{id}/reverse`.
+  - `backend/app/review/routes.py`: Derived review flag status dynamically from `review_decisions` table to comply with append-only database trigger `trg_review_flags_append_only_rows`.
+  - `backend/app/auth/throttle.py`: Switched JSONB email lookup from `.as_string()` to `.astext`.
+  - `backend/app/main.py`: Guarded `Content-Length` header against malformed/negative values and enforced 16 KB body size limit.
+  - `backend/app/audit/verify.py`: Bulk-loaded entries and refusals by account, eliminating N+1 queries over network; cast global and customer sums to `int`.
+  - `backend/app/errors.py`: Implemented `standardized_error_envelope(code, message, request_id)` helper.
+  - `frontend/lib/api.ts`: Added `reverseJournal`, keyset statement ordering, and review decision normalization.
+  - `backend/tests/integration/test_property_conservation.py`: Added Hypothesis property test proving Invariants I1/I2 across random operation sequences.
+  - `backend/tests/security/test_authorization.py`: Added `test_post_movement_enforces_membership`.
+  - `THREATS.md`: Updated all threat vectors to CLOSED with verified passing test references.
+- **Verification Evidence**:
+  - `test_no_overdraft_race.py`: 20 concurrent threads against ₹100 account; exactly 3 succeed, 17 cleanly refused, final balance ₹10.
+  - `test_deadlock_opposite_transfers.py`: 20 concurrent opposite transfers without deadlock.
+  - `test_idempotency_concurrent.py`: 20 concurrent replays return original journal.
+  - `test_property_conservation.py`: Hypothesis property-based testing passes with zero discrepancies.
+  - `scripts/mutation_check.sh`: 5/5 mutations killed (row lock, balance floor check, idempotency claim, append-only triggers, membership authorization).
+  - Live cryptographic ledger audit `/audit/verify`: Zero discrepancies.
+
+### Previous: 2026-11-07 16:00 IST — Backend Security & Bug Audit Report
 - **Files Touched**:
   - `docs/BACKEND_AUDIT_REPORT.md`: Comprehensive audit report covering 9 backend vulnerabilities/bugs across auth, accounts, ledger, review, migrations, and test suites.
 - **Key Findings Documented**:

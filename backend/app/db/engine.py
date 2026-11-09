@@ -7,9 +7,11 @@ guarantees clean closure after every request. No transactions are auto-committed
 commit and rollback points are explicit in domain services.
 """
 
-from typing import Generator
+from collections.abc import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import Session, sessionmaker
+
 from app.config import settings
 
 # Runtime engine connects via DATABASE_URL_APP if provided, otherwise DATABASE_URL

@@ -10,8 +10,7 @@ All constraints from docs/ARCHITECTURE.md are represented:
 """
 
 import uuid
-from datetime import datetime
-from typing import Optional, Any, Dict
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -25,9 +24,11 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import BYTEA, JSONB, UUID
 from sqlalchemy.orm import relationship
+
 from app.db.base import Base
 
 
@@ -109,6 +110,12 @@ class Journal(Base):
             name="valid_journal_kind",
         ),
         UniqueConstraint("initiated_by", "idempotency_key", name="uq_journal_initiator_key"),
+        Index(
+            "uq_journals_reverses_journal_id",
+            "reverses_journal_id",
+            unique=True,
+            postgresql_where=text("reverses_journal_id IS NOT NULL"),
+        ),
     )
 
 

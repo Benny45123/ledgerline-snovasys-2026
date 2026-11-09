@@ -277,6 +277,22 @@ In accordance with the hiring challenge guidelines, AI tools were used for archi
 
 ---
 
-## 9. License
+## 9. Deliverables & Documentation Index
+
+| Deliverable | Location | Description |
+| :--- | :--- | :--- |
+| **API Reference** | [`docs/API.md`](file:///workspace/docs/API.md) | Exhaustive endpoint specification: who may call it, request/response, and effect on money. |
+| **Threat Model** | [`THREATS.md`](file:///workspace/THREATS.md) | 46 concrete threats across concurrency, idempotency, auth, and tampering—all closed by tests. |
+| **Mutation Testing** | [`docs/MUTATION_REPORT.md`](file:///workspace/docs/MUTATION_REPORT.md) | Contractual proof: 5/5 core security mechanisms crippled and killed by test suites. |
+| **AI Prompts Log** | [`PROMPTS.md`](file:///workspace/PROMPTS.md) | 12 dated sessions detailing human instructions, AI bugs, tool calls, and verified fixes. |
+| **Architecture Specification** | [`docs/ARCHITECTURE.md`](file:///workspace/docs/ARCHITECTURE.md) | Detailed 6-phase atomic movement protocol, hash chaining, and invariant proofs. |
+| **Database Schema** | [`docs/DB_SCHEMA.md`](file:///workspace/docs/DB_SCHEMA.md) | Full PostgreSQL schema, constraints, triggers, and immutability rules. |
+| **Design Decisions** | [`docs/DESIGN_DECISIONS.md`](file:///workspace/docs/DESIGN_DECISIONS.md) | Plain-English rationale for PostgreSQL 16, double-entry, sorted locking, and integer paise. |
+| **Unfinished & Scope Cuts** | [`docs/UNFINISHED.md`](file:///workspace/docs/UNFINISHED.md) | Transparent register of deliberate trade-offs, accepted risks, and in-progress items. |
+| **Submission Write-Up** | [`docs/WRITEUP.md`](file:///workspace/docs/WRITEUP.md) | Official 750-word write-up and answers to the 6 submission portal questions. |
+
+---
+
+## 10. License
 
 This project is licensed under the MIT License — see the [LICENSE](file:///workspace/LICENSE) file for details.

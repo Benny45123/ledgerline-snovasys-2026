@@ -10,9 +10,10 @@ checked on every authenticated request.
 
 import hashlib
 import secrets
-from datetime import datetime, timezone, timedelta
-from typing import Optional, Tuple
+from datetime import UTC, datetime, timedelta
+
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.db.models import SessionModel, User
 
@@ -22,11 +23,11 @@ def hash_token(token: str) -> bytes:
     return hashlib.sha256(token.encode("utf-8")).digest()
 
 
-def create_session(db: Session, user: User) -> Tuple[str, datetime]:
+def create_session(db: Session, user: User) -> tuple[str, datetime]:
     """Generate a new 256-bit session token and store its SHA-256 hash."""
     raw_token = secrets.token_urlsafe(32)
     token_digest = hash_token(raw_token)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + timedelta(minutes=settings.SESSION_TTL_MINUTES)
 
     session_record = SessionModel(
@@ -40,10 +41,10 @@ def create_session(db: Session, user: User) -> Tuple[str, datetime]:
     return raw_token, expires_at
 
 
-def get_user_from_token(db: Session, raw_token: str) -> Optional[User]:
+def get_user_from_token(db: Session, raw_token: str) -> User | None:
     """Look up an active user by validating the token's hash, expiry, and revocation."""
     token_digest = hash_token(raw_token)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     session_record = (
         db.query(SessionModel)
@@ -67,7 +68,7 @@ def revoke_session(db: Session, raw_token: str) -> bool:
     token_digest = hash_token(raw_token)
     session_record = db.query(SessionModel).filter(SessionModel.token_hash == token_digest).first()
     if session_record and session_record.revoked_at is None:
-        session_record.revoked_at = datetime.now(timezone.utc)
+        session_record.revoked_at = datetime.now(UTC)
         db.commit()
         return True
     return False

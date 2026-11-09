@@ -8,7 +8,7 @@ remains indistinguishable from an authentic email lookup.
 """
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError, InvalidHashError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 
 ph = PasswordHasher(
     time_cost=3,
@@ -39,5 +39,5 @@ def dummy_verify() -> None:
     """Execute a simulated verification to neutralize timing discrepancies."""
     try:
         ph.verify(DUMMY_HASH, "wrong-password")
-    except Exception:
+    except (VerifyMismatchError, VerificationError, InvalidHashError):
         pass

@@ -9,12 +9,12 @@ subsequent hashes and is detected by /audit/verify.
 
 import hashlib
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict
+from datetime import UTC, datetime
+from typing import Any
 from uuid import UUID
 
 
-def compute_request_hash(payload: Dict[str, Any]) -> bytes:
+def compute_request_hash(payload: dict[str, Any]) -> bytes:
     """Compute deterministic SHA-256 digest of a request payload."""
     canonical_json = json.dumps(
         payload,
@@ -36,11 +36,11 @@ def compute_entry_hash(
 ) -> bytes:
     """Compute the SHA-256 entry hash matching the database trigger specification."""
     # Format timestamp to UTC ISO-8601 with microseconds
-    ts_utc = created_at.astimezone(timezone.utc)
+    ts_utc = created_at.astimezone(UTC)
     ts_str = ts_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     canonical_str = (
-        f"{str(account_id)}|{account_seq}|{str(journal_id)}|{amount}|{balance_after}|{ts_str}"
+        f"{account_id!s}|{account_seq}|{journal_id!s}|{amount}|{balance_after}|{ts_str}"
     )
     hasher = hashlib.sha256()
     hasher.update(prev_hash)
@@ -58,11 +58,11 @@ def compute_refusal_hash(
     created_at: datetime,
 ) -> bytes:
     """Compute the SHA-256 refusal hash matching the database trigger specification."""
-    ts_utc = created_at.astimezone(timezone.utc)
+    ts_utc = created_at.astimezone(UTC)
     ts_str = ts_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     canonical_str = (
-        f"{str(account_id)}|{account_seq}|{amount}|{balance_at}|{reason_code}|{ts_str}"
+        f"{account_id!s}|{account_seq}|{amount}|{balance_at}|{reason_code}|{ts_str}"
     )
     hasher = hashlib.sha256()
     hasher.update(prev_hash)

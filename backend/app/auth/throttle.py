@@ -7,12 +7,13 @@ Instead of permanently locking accounts (which would allow an adversary to DoS
 shared judge/seed accounts), progressive sleep delays are enforced and an HTTP 429
 is returned when rate limits are exceeded. Every failure is audited.
 """
-from typing import Any, Optional
 import time
-from datetime import datetime, timezone, timedelta
-from typing import Optional
-from sqlalchemy.orm import Session
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from sqlalchemy import func
+from sqlalchemy.orm import Session
+
 from app.db.models import SecurityEvent
 from app.errors import RateLimitedError
 
@@ -21,9 +22,9 @@ MAX_ATTEMPTS_BEFORE_429 = 15
 WINDOW_MINUTES = 15
 
 
-def check_login_throttle(db: Session, email: str, ip: Optional[str]) -> None:
+def check_login_throttle(db: Session, email: str, ip: str | None) -> None:
     """Enforce progressive delay or 429 based on recent failed login events."""
-    cutoff = datetime.now(timezone.utc) - timedelta(minutes=WINDOW_MINUTES)
+    cutoff = datetime.now(UTC) - timedelta(minutes=WINDOW_MINUTES)
 
     # Count failed attempts for this email
     email_fails = (
@@ -31,7 +32,7 @@ def check_login_throttle(db: Session, email: str, ip: Optional[str]) -> None:
         .filter(
             SecurityEvent.event == "login_failed",
             SecurityEvent.created_at >= cutoff,
-            SecurityEvent.detail["email"].as_string() == email,
+            SecurityEvent.detail["email"].astext == email,
         )
         .scalar()
         or 0
@@ -67,9 +68,9 @@ def record_login_attempt(
     db: Session,
     success: bool,
     email: str,
-    ip: Optional[str],
-    request_id: Optional[str],
-    user_id: Optional[Any] = None,
+    ip: str | None,
+    request_id: str | None,
+    user_id: Any | None = None,
 ) -> None:
     """Record an immutable security event for every login attempt."""
     event_type = "login_success" if success else "login_failed"

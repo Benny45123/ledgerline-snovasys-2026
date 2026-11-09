@@ -7,18 +7,20 @@ to security_events. System accounts (EXTERNAL for cash inflow/outflow, SUSPENSE 
 are created idempotently and protected from direct customer mutation.
 """
 
-import random
+import secrets
 import uuid
-from typing import Optional
 from uuid import UUID
+
 from sqlalchemy.orm import Session
+
 from app.db.models import Account, AccountMember, SecurityEvent, User
-from app.errors import NotFoundError, ValidationError
+from app.errors import NotFoundError
 
 
 def generate_account_number() -> str:
     """Generate a non-sequential 12-digit account number."""
-    return f"10{random.randint(1000000000, 9999999999)}"
+    suffix = secrets.randbelow(9_000_000_000) + 1_000_000_000
+    return f"10{suffix}"
 
 
 def create_customer_account(

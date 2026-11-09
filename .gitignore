@@ -46,3 +46,6 @@ out/
 Thumbs.db
 .idea/
 .vscode/
+
+# Local guides & presenter notes
+.ai/WALKTHROUGH.md

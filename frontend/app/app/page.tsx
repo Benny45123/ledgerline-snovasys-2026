@@ -242,24 +242,27 @@ export default function AppPage() {
       const targetId = accId || activeAccount?.id;
       if (!targetId) return;
       try {
-        const stm = await api.getStatement(targetId, { limit: 20 });
-        if (!accId || (activeAccount && targetId === activeAccount.id)) {
-          setStatements(stm.items);
-          setStatementHasMore(Boolean(stm.has_more));
-          setStatementNextAfter(stm.next_after ?? stm.next_cursor ?? null);
-        }
+        const [stm, updatedAcc, allAccs] = await Promise.all([
+          api.getStatement(targetId, { limit: 20 }),
+          api.getAccount(targetId),
+          api.getAccounts().catch(() => null),
+        ]);
 
-        // Update balance on active account
-        const updatedAcc = await api.getAccount(targetId);
-        if (activeAccount && targetId === activeAccount.id) {
-          setActiveAccount(updatedAcc);
+        setStatements(stm.items);
+        setStatementHasMore(Boolean(stm.has_more));
+        setStatementNextAfter(stm.next_after ?? stm.next_cursor ?? null);
+        setActiveAccount(updatedAcc);
+
+        if (allAccs) {
+          setAccounts(allAccs);
+        } else {
+          setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
         }
-        setAccounts((prev) => prev.map((a) => (a.id === updatedAcc.id ? updatedAcc : a)));
       } catch (e) {
         addErrorToast(e);
       }
     },
-    [activeAccount, addErrorToast]
+    [activeAccount?.id, addErrorToast]
   );
 
   const handleSelectAccount = async (acc: Account) => {
@@ -577,6 +580,68 @@ export default function AppPage() {
       }
     }
     return { totalCredits: cr, totalDebits: db, refusalCount: rf };
+  }, [statements]);
+
+  // Computed daily net movement for the last 12 calendar days from real ledger entries
+  const dailyMovement = useMemo(() => {
+    const now = new Date();
+    const days: {
+      dateStr: string;
+      label: string;
+      fullDate: string;
+      netPaise: number;
+      volumePaise: number;
+    }[] = [];
+
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(now.getDate() - i);
+      const dateStr = d.toISOString().slice(0, 10);
+      const label = d.toLocaleDateString("en-IN", { day: "numeric" });
+      const fullDate = d.toLocaleDateString("en-IN", { month: "short", day: "numeric" });
+      days.push({ dateStr, label, fullDate, netPaise: 0, volumePaise: 0 });
+    }
+
+    // Aggregate postings from statements for active account
+    for (const item of statements) {
+      if (item.type !== "posting") continue;
+      const itemDate = (item.at || "").slice(0, 10);
+      const match = days.find((d) => d.dateStr === itemDate);
+      if (match) {
+        match.netPaise += item.amount;
+        match.volumePaise += Math.abs(item.amount);
+      }
+    }
+
+    const maxVolume = Math.max(...days.map((d) => d.volumePaise), 0);
+
+    return days.map((d, idx) => {
+      // Scale height between 6% (baseline) and 92% (peak daily volume)
+      const heightPct =
+        maxVolume > 0 && d.volumePaise > 0
+          ? Math.min(92, Math.max(14, Math.round((d.volumePaise / maxVolume) * 85) + 7))
+          : 6;
+
+      const isToday = idx === 11;
+      const hasActivity = d.volumePaise > 0;
+
+      let tipText = `${d.fullDate} · ₹0.00`;
+      if (d.netPaise > 0) {
+        tipText = `${d.fullDate} · +${formatPaise(d.netPaise)}`;
+      } else if (d.netPaise < 0) {
+        tipText = `${d.fullDate} · -${formatPaise(Math.abs(d.netPaise))}`;
+      } else if (d.volumePaise > 0) {
+        tipText = `${d.fullDate} · Net ₹0 (Vol ${formatPaise(d.volumePaise)})`;
+      }
+
+      return {
+        ...d,
+        heightPct,
+        isToday,
+        hasActivity,
+        tipText,
+      };
+    });
   }, [statements]);
 
   // Allowed tabs per role
@@ -932,29 +997,32 @@ export default function AppPage() {
                 <div className="g2">
                   {/* Movement Chart */}
                   <div className="card c" style={{ "--i": 2 } as React.CSSProperties}>
-                    <h3>Net movement</h3>
-                    <small>Daily, last 12 days (illustrative)</small>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
+                      <h3>Net movement</h3>
+                      <span className="chip" style={{ fontSize: "11px" }}>Live ledger</span>
+                    </div>
+                    <small>Daily, last 12 days (calculated from account transactions)</small>
                     <div className="chart">
-                      {[32, 48, 40, 61, 45, 38, 57, 72, 44, 52, 66, 49].map((v, i) => (
+                      {dailyMovement.map((d, i) => (
                         <i
-                          key={`bar-${i}`}
-                          className={i === 7 ? "hi" : ""}
+                          key={`bar-${d.dateStr}-${i}`}
+                          className={`${d.isToday ? "hi" : ""} ${d.netPaise < 0 ? "neg-net" : ""}`}
                           style={
                             {
-                              "--h": `${v}%`,
+                              "--h": `${d.heightPct}%`,
                               "--i": i,
                             } as React.CSSProperties
                           }
                         >
                           <span className="tip">
-                            Nov {i + 1} · ₹{v}k
+                            {d.tipText}
                           </span>
                         </i>
                       ))}
                     </div>
                     <div className="ax">
-                      {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((x) => (
-                        <span key={`ax-${x}`}>{x}</span>
+                      {dailyMovement.map((d) => (
+                        <span key={`ax-${d.dateStr}`}>{d.label}</span>
                       ))}
                     </div>
                   </div>
@@ -1527,43 +1595,57 @@ export default function AppPage() {
                 </div>
 
                 {moveType === "transfer" ? (
-                  <label>
-                    To account number
-                    <input
-                      value={toAccountNum}
-                      onChange={(e) => setToAccountNum(e.target.value)}
-                      placeholder="e.g. 10XXXXXXXXXX"
-                    />
-                    {accounts.length > 1 && (
-                      <span style={{ fontSize: "12px", color: "var(--mut)", marginTop: "6px", display: "block" }}>
-                        Your other accounts:{" "}
-                        {accounts
-                          .filter((a) => a.id !== activeAccount?.id)
-                          .map((a) => (
-                            <button
-                              key={`quick-dest-${a.id}`}
-                              type="button"
-                              onClick={() => setToAccountNum(a.number)}
-                              style={{
-                                background: "none",
-                                border: "none",
-                                color: "var(--acc)",
-                                cursor: "pointer",
-                                padding: "0 4px",
-                                textDecoration: "underline",
-                                fontFamily: "monospace",
-                              }}
-                            >
-                              {a.number} ({a.name})
-                            </button>
-                          ))}
-                      </span>
-                    )}
-                  </label>
+                  <>
+                    <label>
+                      From account
+                      <input
+                        value={`${activeAccount?.name || "Account"} (${activeAccount?.number || ""}) · Balance: ${formatPaise(activeAccount?.balance ?? 0)}`}
+                        disabled
+                        style={{ opacity: 0.85 }}
+                      />
+                    </label>
+                    <label>
+                      To account number
+                      <input
+                        value={toAccountNum}
+                        onChange={(e) => setToAccountNum(e.target.value)}
+                        placeholder="e.g. 10XXXXXXXXXX"
+                      />
+                      {accounts.length > 1 && (
+                        <span style={{ fontSize: "12px", color: "var(--mut)", marginTop: "6px", display: "block" }}>
+                          Your other accounts:{" "}
+                          {accounts
+                            .filter((a) => a.id !== activeAccount?.id)
+                            .map((a) => (
+                              <button
+                                key={`quick-dest-${a.id}`}
+                                type="button"
+                                onClick={() => setToAccountNum(a.number)}
+                                style={{
+                                  background: "none",
+                                  border: "none",
+                                  color: "var(--acc)",
+                                  cursor: "pointer",
+                                  padding: "0 4px",
+                                  textDecoration: "underline",
+                                  fontFamily: "monospace",
+                                }}
+                              >
+                                {a.number} ({a.name})
+                              </button>
+                            ))}
+                        </span>
+                      )}
+                    </label>
+                  </>
                 ) : (
                   <label>
                     {moveType === "deposit" ? "To" : "From"} account
-                    <input value={activeAccount?.number || "None"} disabled />
+                    <input
+                      value={`${activeAccount?.name || "Account"} (${activeAccount?.number || ""}) · Balance: ${formatPaise(activeAccount?.balance ?? 0)}`}
+                      disabled
+                      style={{ opacity: 0.85 }}
+                    />
                   </label>
                 )}
 

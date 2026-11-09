@@ -8,7 +8,9 @@ and the cryptographic verify engine confirms zero discrepancies.
 """
 
 import uuid
+
 from sqlalchemy.orm import Session
+
 from app.accounts.service import create_customer_account, get_system_account
 from app.audit.verify import verify_ledger_integrity
 from app.ledger.service import post_movement
@@ -19,6 +21,17 @@ def test_conservation_invariant(db: Session, test_users):
     holder1 = test_users["holder1"]
     holder2 = test_users["holder2"]
     ext_acc = get_system_account(db, "external")
+
+    initial_ext_balance = ext_acc.balance
+    from sqlalchemy import func
+
+    from app.db.models import Account
+    initial_customer_sum = int(
+        db.query(func.coalesce(func.sum(Account.balance), 0))
+        .filter(Account.kind == "customer")
+        .scalar()
+        or 0
+    )
 
     # 1. Create two customer accounts
     acc1 = create_customer_account(db, "Conservation Acc 1", holder1.id, overdraft_limit=0)
@@ -74,18 +87,18 @@ def test_conservation_invariant(db: Session, test_users):
     # Balance expectations
     # Acc 1: +100,000 - 40,000 = 60,000 paise
     # Acc 2: +40,000 - 15,000 = 25,000 paise
-    # Ext Acc: -100,000 + 15,000 = -85,000 paise
+    # Ext Acc: delta is -100,000 + 15,000 = -85,000 paise
     assert acc1.balance == 60000
     assert acc2.balance == 25000
-    assert ext_acc.balance == -85000
+    assert ext_acc.balance == initial_ext_balance - 85000
 
     # System sum: 60,000 + 25,000 + (-85,000) = 0
-    total_system = acc1.balance + acc2.balance + ext_acc.balance
-    assert total_system == 0
+    total_delta = acc1.balance + acc2.balance + (ext_acc.balance - initial_ext_balance)
+    assert total_delta == 0
 
     # Run cryptographic verification
     report = verify_ledger_integrity(db)
     assert report.verified is True
     assert len(report.discrepancies) == 0
     assert report.global_balance_sum == 0
-    assert report.customer_balance_sum == 85000  # Total customer cash equals net deposits
+    assert report.customer_balance_sum == initial_customer_sum + 85000

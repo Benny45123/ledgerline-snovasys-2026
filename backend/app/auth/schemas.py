@@ -8,6 +8,7 @@ Unknown fields, type coercions, or malicious mass-assignment attempts
 
 from datetime import datetime
 from uuid import UUID
+
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 

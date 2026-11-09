@@ -11,11 +11,11 @@ import os
 
 def test_review_does_not_import_ledger_service():
     """Prove that review module never imports ledger.service."""
-    review_dir = os.path.join(os.path.dirname(__file__), "..", "app", "review")
+    review_dir = os.path.join(os.path.dirname(__file__), "..", "..", "app", "review")
     for fname in os.listdir(review_dir):
         if fname.endswith(".py"):
             fpath = os.path.join(review_dir, fname)
-            with open(fpath, "r", encoding="utf-8") as f:
+            with open(fpath, encoding="utf-8") as f:
                 tree = ast.parse(f.read(), filename=fname)
 
             for node in ast.walk(tree):

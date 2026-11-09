@@ -8,7 +8,7 @@ before the service can bind or accept traffic. Default monetary caps prevent
 integer overflow and precision loss.
 """
 
-from typing import List
+
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -44,7 +44,7 @@ class Settings(BaseSettings):
         description="Maximum transaction amount in paise to prevent integer overflow",
     )
 
-    ALLOWED_ORIGINS: List[str] = Field(
+    ALLOWED_ORIGINS: list[str] = Field(
         default=["http://localhost:3000", "http://127.0.0.1:3000"],
         description="CORS allowed origins",
     )

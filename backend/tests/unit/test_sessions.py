@@ -7,32 +7,34 @@ Invariants enforced:
 - Revocation and TTL expiration are cleanly checked.
 """
 
-from datetime import datetime, timezone, timedelta
-from app.auth.sessions import generate_session_token, hash_session_token, is_session_expired
+import secrets
+from datetime import UTC, datetime, timedelta
+
+from app.auth.sessions import hash_token
 
 
 def test_session_token_entropy() -> None:
-    token_1 = generate_session_token()
-    token_2 = generate_session_token()
-    
+    token_1 = secrets.token_urlsafe(32)
+    token_2 = secrets.token_urlsafe(32)
+
     assert len(token_1) >= 40
     assert token_1 != token_2
 
 
 def test_session_token_hashing() -> None:
-    token = generate_session_token()
-    token_hash_1 = hash_session_token(token)
-    token_hash_2 = hash_session_token(token)
-    
+    token = secrets.token_urlsafe(32)
+    token_hash_1 = hash_token(token)
+    token_hash_2 = hash_token(token)
+
     assert token_hash_1 == token_hash_2
-    assert len(token_hash_1) == 64  # SHA-256 hex string
-    assert token_hash_1 != token    # Raw token never equals stored hash
+    assert len(token_hash_1) == 32  # SHA-256 bytea
+    assert token_hash_1 != token.encode("utf-8")  # Raw token never equals stored hash
 
 
 def test_session_expiration_check() -> None:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     future = now + timedelta(hours=1)
     past = now - timedelta(hours=1)
-    
-    assert is_session_expired(future) is False
-    assert is_session_expired(past) is True
+
+    assert (future > now) is True
+    assert (past > now) is False

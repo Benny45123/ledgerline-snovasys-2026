@@ -14,13 +14,15 @@ Unexpected exceptions cleanly rollback the entire transaction including the key 
 """
 
 import uuid
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Literal, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any, Literal
 from uuid import UUID
+
 from psycopg.errors import LockNotAvailable, QueryCanceled
 from sqlalchemy import text
-from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.exc import DBAPIError, IntegrityError, OperationalError
 from sqlalchemy.orm import Session
+
 from app.config import settings
 from app.db.models import (
     Account,
@@ -31,10 +33,12 @@ from app.db.models import (
     LedgerEntry,
     RefusedAttempt,
     SecurityEvent,
+    User,
 )
 from app.errors import (
     AccountClosedError,
     AccountFrozenError,
+    ForbiddenError,
     IdempotencyKeyReuseError,
     InsufficientFundsError,
     InvalidDestinationError,
@@ -60,10 +64,10 @@ def post_movement(
     source_account_id: UUID,
     destination_account_id: UUID,
     amount: int,
-    raw_payload: Dict[str, Any],
-    memo: Optional[str] = None,
-    reverses_journal_id: Optional[UUID] = None,
-) -> Tuple[MovementResponse, bool]:
+    raw_payload: dict[str, Any],
+    memo: str | None = None,
+    reverses_journal_id: UUID | None = None,
+) -> tuple[MovementResponse, bool]:
     """Execute atomic money movement or return an idempotent replay.
 
     Returns:
@@ -90,17 +94,16 @@ def post_movement(
             ON CONFLICT (user_id, key) DO NOTHING
             """
         )
-        res = db.execute(
+        res: Any = db.execute(
             claim_stmt,
             {"user_id": user_id, "key": idempotency_key, "request_hash": req_hash},
         )
 
         if res.rowcount == 0:
             # Key already exists: lock and inspect the existing key row
-            existing_key = (
+            existing_key: Any = (
                 db.query(IdempotencyKey)
                 .filter(IdempotencyKey.user_id == user_id, IdempotencyKey.key == idempotency_key)
-                .with_for_update()
                 .first()
             )
 
@@ -127,26 +130,26 @@ def post_movement(
 
             # If the original was a refusal, re-raise the recorded refusal
             if existing_key.response_status == 409:
-                err_msg = existing_key.response_body.get("message", "Transaction refused.")
-                raise RefusalError(message=err_msg, code=existing_key.response_body.get("code", "refused"))
+                err_msg = str(existing_key.response_body.get("message", "Transaction refused."))
+                raise RefusalError(message=err_msg, code=str(existing_key.response_body.get("code", "refused")))
 
             if existing_key.response_status != 200:
                 raise ValidationError(message="Original request failed.")
 
             # Replay stored response
-            stored = existing_key.response_body
+            stored: Any = existing_key.response_body
             replayed_resp = MovementResponse(
-                journal_id=UUID(stored["journal_id"]),
-                kind=stored["kind"],
-                amount=stored["amount"],
+                journal_id=UUID(str(stored["journal_id"])),
+                kind=str(stored["kind"]),
+                amount=int(stored["amount"]),
                 status="posted",
                 entry=PostingEntryResponse(
-                    account_id=UUID(stored["entry"]["account_id"]),
-                    account_seq=stored["entry"]["account_seq"],
-                    amount=stored["entry"]["amount"],
-                    balance_after=stored["entry"]["balance_after"],
+                    account_id=UUID(str(stored["entry"]["account_id"])),
+                    account_seq=int(stored["entry"]["account_seq"]),
+                    amount=int(stored["entry"]["amount"]),
+                    balance_after=int(stored["entry"]["balance_after"]),
                 ),
-                created_at=datetime.fromisoformat(stored["created_at"]),
+                created_at=datetime.fromisoformat(str(stored["created_at"])),
             )
             return replayed_resp, True
 
@@ -168,27 +171,105 @@ def post_movement(
         src_acc = acc_map[source_account_id]
         dest_acc = acc_map[destination_account_id]
 
-        # Phase 3: Authorize caller inside transaction post-lock
-        if src_acc.kind == "customer":
-            membership = (
-                db.query(AccountMember)
-                .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
-                .first()
-            )
-            if not membership:
-                # Log security event and return 404 (never 403) to prevent enumeration
+        # Phase 3: Authorize caller inside transaction post-lock (Invariant I6)
+        caller = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+        if not caller:
+            db.rollback()
+            raise NotFoundError("User not found.")
+
+        if kind in ("adjustment", "reversal"):
+            if caller.role != "admin":
                 sec_event = SecurityEvent(
                     actor_user_id=user_id,
-                    event="unauthorized_account_access",
-                    detail={"account_id": str(src_acc.id), "action": kind},
+                    event="unauthorized_admin_action",
+                    detail={"action": kind, "caller_role": caller.role},
                     request_id=request_id,
                 )
                 db.add(sec_event)
                 db.commit()
-                raise NotFoundError("Account not found.")
+                raise ForbiddenError("Only administrators may execute balance adjustments or reversals.")
+
+            if kind == "reversal" and reverses_journal_id:
+                # Lock original journal to prevent concurrent duplicate reversals
+                orig_journal = (
+                    db.query(Journal)
+                    .filter(Journal.id == reverses_journal_id)
+                    .with_for_update()
+                    .first()
+                )
+                if not orig_journal:
+                    db.rollback()
+                    raise NotFoundError("Original journal not found.")
+                if orig_journal.kind == "reversal":
+                    db.rollback()
+                    raise ValidationError("Cannot reverse a reversal journal.")
+
+                already_reversed = (
+                    db.query(Journal)
+                    .filter(Journal.reverses_journal_id == reverses_journal_id)
+                    .first()
+                )
+                if already_reversed:
+                    db.rollback()
+                    raise ValidationError("Journal has already been reversed.")
+        else:
+            # Customer-initiated money movements
+            if kind == "transfer":
+                if src_acc.kind != "customer" or dest_acc.kind != "customer":
+                    db.rollback()
+                    raise NotFoundError("Account not found.")
+                membership = (
+                    db.query(AccountMember)
+                    .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
+                    .first()
+                )
+                if not membership:
+                    # Log security event and return 404 (never 403) to prevent enumeration
+                    sec_event = SecurityEvent(
+                        actor_user_id=user_id,
+                        event="unauthorized_account_access",
+                        detail={"account_id": str(src_acc.id), "action": kind},
+                        request_id=request_id,
+                    )
+                    db.add(sec_event)
+                    db.commit()
+                    raise NotFoundError("Account not found.")
+            elif kind == "withdrawal":
+                if src_acc.kind != "customer" or dest_acc.kind != "external":
+                    db.rollback()
+                    raise NotFoundError("Account not found.")
+                membership = (
+                    db.query(AccountMember)
+                    .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
+                    .first()
+                )
+                if not membership:
+                    sec_event = SecurityEvent(
+                        actor_user_id=user_id,
+                        event="unauthorized_account_access",
+                        detail={"account_id": str(src_acc.id), "action": kind},
+                        request_id=request_id,
+                    )
+                    db.add(sec_event)
+                    db.commit()
+                    raise NotFoundError("Account not found.")
+            elif kind == "deposit":
+                if src_acc.kind != "external" or dest_acc.kind != "customer":
+                    db.rollback()
+                    raise NotFoundError("Account not found.")
+                membership = (
+                    db.query(AccountMember)
+                    .filter(AccountMember.account_id == dest_acc.id, AccountMember.user_id == user_id)
+                    .first()
+                )
+                if not membership:
+                    raise NotFoundError("Account not found.")
+            else:
+                db.rollback()
+                raise ValidationError(f"Invalid movement kind: {kind}")
 
         # Phase 4: Validate Account Status
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if src_acc.status == "frozen":
             _record_refusal_and_commit(
@@ -327,10 +408,17 @@ def post_movement(
     except (LockNotAvailable, QueryCanceled) as e:
         db.rollback()
         raise LockTimeoutError() from e
+    except IntegrityError as e:
+        db.rollback()
+        if "uq_journals_reverses_journal_id" in str(e):
+            raise ValidationError("Journal has already been reversed.") from e
+        raise
     except (DBAPIError, OperationalError) as e:
         db.rollback()
-        # Detect PostgreSQL lock timeout sqlstate 55P03
-        if hasattr(e.orig, "sqlstate") and e.orig.sqlstate == "55P03":
+        # Detect PostgreSQL lock timeout (55P03) or statement timeout (57014)
+        orig_err = getattr(e, "orig", None)
+        sqlstate = getattr(orig_err, "sqlstate", None)
+        if sqlstate in ("55P03", "57014") or isinstance(orig_err, (LockNotAvailable, QueryCanceled)):
             raise LockTimeoutError() from e
         raise
     except Exception:
@@ -343,17 +431,17 @@ def _record_refusal_and_commit(
     user_id: UUID,
     idempotency_key: str,
     request_id: str,
-    src_acc: Account,
-    dest_acc: Account,
+    src_acc: Any,
+    dest_acc: Any,
     amount: int,
     reason_code: str,
     now: datetime,
 ) -> None:
     """Commit an immutable refusal record into refused_attempts."""
-    seq = src_acc.next_seq
+    seq = int(src_acc.next_seq)
     prev_hash = bytes(src_acc.last_hash)
     entry_hash = compute_refusal_hash(
-        prev_hash, src_acc.id, seq, amount, src_acc.balance, reason_code, now
+        prev_hash, UUID(str(src_acc.id)), seq, amount, int(src_acc.balance), reason_code, now
     )
 
     refusal = RefusedAttempt(
@@ -378,7 +466,7 @@ def _record_refusal_and_commit(
     src_acc.last_hash = entry_hash
 
     # Save refusal response in idempotency_keys
-    idempotency_record = (
+    idempotency_record: Any = (
         db.query(IdempotencyKey)
         .filter(IdempotencyKey.user_id == user_id, IdempotencyKey.key == idempotency_key)
         .first()
