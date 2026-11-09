@@ -11,6 +11,9 @@ import {
   ReviewFlag,
   ApiError,
   setToken,
+  AccountInsights,
+  ChatResponse,
+  InsightCard,
 } from "@/lib/api";
 import { formatPaise, parseRupeesToPaise } from "@/lib/money";
 
@@ -25,9 +28,36 @@ type TabType = "dashboard" | "statement" | "audit" | "admin";
 type MoveType = "transfer" | "deposit" | "withdraw";
 type ModalStep = "form" | "review" | "busy" | "done";
 
+interface MessageItem {
+  id: string;
+  role: "user" | "assistant";
+  text?: string;
+  response?: ChatResponse;
+  tool?: string;
+}
+
+const DEFAULT_SUGGESTIONS = [
+  "Project my 30-day cash flow",
+  "Show largest transfers",
+  "Check fraud risk score",
+  "Find transfers above ₹5,000",
+  "Run reconciliation audit",
+];
+
 export default function AppPage() {
   // Theme state
   const [theme, setTheme] = useState<"light" | "dark">("light");
+
+  // AI Copilot & Intelligence State
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<MessageItem[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [isChatThinking, setIsChatThinking] = useState(false);
+  const [activeProvider, setActiveProvider] = useState("Offline engine");
+  const [suggestedPills, setSuggestedPills] = useState<string[]>(DEFAULT_SUGGESTIONS);
+  const [accountInsights, setAccountInsights] = useState<AccountInsights | null>(null);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const chatScrollRef = useRef<HTMLDivElement>(null);
 
   // Auth & Session
   const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
@@ -216,6 +246,7 @@ export default function AppPage() {
           setStatementHasMore(Boolean(stm.has_more));
           setStatementNextAfter(stm.next_after ?? stm.next_cursor ?? null);
           setAdjAccount(primary.number);
+          fetchInsights(primary.id);
         }
       }
 
@@ -231,6 +262,11 @@ export default function AppPage() {
         setUser(null);
         setToken(null);
         setCurrentTab("dashboard");
+        setChatMessages([]);
+        setChatInput("");
+        setAccountInsights(null);
+        setIsCopilotOpen(false);
+        setSuggestedPills(DEFAULT_SUGGESTIONS);
       } else {
         addErrorToast(err);
       }
@@ -242,6 +278,168 @@ export default function AppPage() {
   useEffect(() => {
     loadUserData();
   }, [loadUserData]);
+
+  // Isolate AI Copilot session strictly per authenticated user to prevent cross-tenant leak
+  const prevUserIdRef = useRef<string | null>(null);
+  const sessionGenRef = useRef(0);
+
+  useEffect(() => {
+    const currentUserId = user?.id ?? null;
+    if (prevUserIdRef.current !== currentUserId) {
+      sessionGenRef.current += 1;
+      setChatMessages([]);
+      setChatInput("");
+      setAccountInsights(null);
+      setIsCopilotOpen(false);
+      setIsChatThinking(false);
+      setSuggestedPills(DEFAULT_SUGGESTIONS);
+      prevUserIdRef.current = currentUserId;
+    }
+  }, [user?.id]);
+
+  // Fetch account financial intelligence from server
+  const fetchInsights = useCallback(async (accId: string) => {
+    if (!accId) return;
+    const gen = sessionGenRef.current;
+    try {
+      setInsightsLoading(true);
+      const data = await api.getAccountInsights(accId);
+      if (gen === sessionGenRef.current) {
+        setAccountInsights(data);
+      }
+    } catch (err) {
+      // Local fallback is automatically computed if server insights fail
+      console.warn("Server insights unavailable; utilizing deterministic fallback", err);
+    } finally {
+      if (gen === sessionGenRef.current) {
+        setInsightsLoading(false);
+      }
+    }
+  }, []);
+
+  // Send message to AI Copilot
+  const handleSendChat = async (promptText?: string) => {
+    const query = (promptText || chatInput).trim();
+    if (!query || isChatThinking) return;
+
+    const userMsgId = `u-${Date.now()}`;
+    const newMessages: MessageItem[] = [
+      ...chatMessages,
+      { id: userMsgId, role: "user", text: query },
+    ];
+    setChatMessages(newMessages);
+    setChatInput("");
+    setIsChatThinking(true);
+    const gen = sessionGenRef.current;
+
+    try {
+      const historyPayload = chatMessages.slice(-6).map((m) => ({
+        role: m.role as "user" | "assistant",
+        content: m.text || m.response?.reply || "",
+      }));
+
+      const resp = await api.chatWithCopilot({
+        message: query,
+        account_id: activeAccount?.id || null,
+        history: historyPayload,
+      });
+
+      if (gen !== sessionGenRef.current) return;
+
+      if (!resp.provider || resp.provider === "deterministic" || resp.provider.toLowerCase().includes("offline")) {
+        setActiveProvider("Offline engine");
+      } else {
+        const prov = resp.provider.toLowerCase();
+        let provName = resp.provider;
+        if (prov === "groq") provName = "Groq";
+        else if (prov === "gemini") provName = "Gemini";
+
+        let modName = resp.model || "";
+        if (modName.toLowerCase().includes("llama-3.3") || modName.toLowerCase().includes("llama3")) {
+          modName = "Llama 3.3";
+        } else if (modName.toLowerCase().includes("flash") || modName.toLowerCase().includes("gemini-2.0") || modName.toLowerCase().includes("gemini-2.5")) {
+          modName = "Flash";
+        } else if (modName === "ledgerline-analytics-v1" || !modName) {
+          modName = "";
+        }
+        setActiveProvider(modName ? `${provName} · ${modName}` : provName);
+      }
+      if (resp.suggested_queries && resp.suggested_queries.length > 0) {
+        setSuggestedPills(resp.suggested_queries);
+      }
+
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `a-${Date.now()}`,
+          role: "assistant",
+          response: resp,
+          tool: `${resp.intent} · read-only`,
+        },
+      ]);
+    } catch (err: unknown) {
+      if (gen !== sessionGenRef.current) return;
+      const errorMsg = err instanceof Error ? err.message : "Failed to reach AI Copilot.";
+      setChatMessages((prev) => [
+        ...prev,
+        {
+          id: `err-${Date.now()}`,
+          role: "assistant",
+          response: {
+            reply: `An error occurred: **${errorMsg}**. Under Invariant I8, LedgerLine operates strictly in read-only surveillance mode.`,
+            provider: "deterministic",
+            model: "fallback",
+            intent: "general",
+            insights: [],
+            suggested_queries: DEFAULT_SUGGESTIONS.slice(0, 3),
+          },
+          tool: "safe · fallback",
+        },
+      ]);
+    } finally {
+      if (gen === sessionGenRef.current) {
+        setIsChatThinking(false);
+      }
+    }
+  };
+
+  // Auto-scroll chat body on new messages
+  useEffect(() => {
+    if (chatScrollRef.current) {
+      chatScrollRef.current.scrollTop = chatScrollRef.current.scrollHeight;
+    }
+  }, [chatMessages, isChatThinking]);
+
+  // Sync drawer class with body for responsive shifting
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      if (isCopilotOpen) {
+        document.body.classList.add("cpo");
+      } else {
+        document.body.classList.remove("cpo");
+      }
+    }
+    return () => {
+      if (typeof document !== "undefined") {
+        document.body.classList.remove("cpo");
+      }
+    };
+  }, [isCopilotOpen]);
+
+  // Keyboard shortcut listener (Cmd+K / Ctrl+K and Escape)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!user) return;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setIsCopilotOpen((prev) => !prev);
+      } else if (e.key === "Escape" && isCopilotOpen) {
+        setIsCopilotOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [user, isCopilotOpen]);
 
   // Refresh active account statements
   const refreshStatements = useCallback(
@@ -259,6 +457,7 @@ export default function AppPage() {
         setStatementHasMore(Boolean(stm.has_more));
         setStatementNextAfter(stm.next_after ?? stm.next_cursor ?? null);
         setActiveAccount(updatedAcc);
+        fetchInsights(targetId);
 
         if (allAccs) {
           setAccounts(allAccs);
@@ -269,10 +468,18 @@ export default function AppPage() {
         addErrorToast(e);
       }
     },
-    [activeAccount?.id, addErrorToast]
+    [activeAccount?.id, addErrorToast, fetchInsights]
   );
 
   const handleSelectAccount = async (acc: Account) => {
+    sessionGenRef.current += 1;
+    if (activeAccount?.id !== acc.id) {
+      setChatMessages([]);
+      setChatInput("");
+      setAccountInsights(null);
+      setIsChatThinking(false);
+      setSuggestedPills(DEFAULT_SUGGESTIONS);
+    }
     setActiveAccount(acc);
     setAdjAccount(acc.number);
     await refreshStatements(acc.id);
@@ -303,6 +510,13 @@ export default function AppPage() {
     try {
       setLoginLoading(true);
       const res = await api.login(authEmail, authPassword);
+      sessionGenRef.current += 1;
+      setChatMessages([]);
+      setChatInput("");
+      setAccountInsights(null);
+      setIsCopilotOpen(false);
+      setIsChatThinking(false);
+      setSuggestedPills(DEFAULT_SUGGESTIONS);
       setUser(res.user);
       addToast(`Signed in as ${res.user.email} (${res.user.role})`);
       await loadUserData();
@@ -315,6 +529,7 @@ export default function AppPage() {
 
   // Handle Logout
   const handleLogout = async () => {
+    sessionGenRef.current += 1;
     try {
       await api.logout();
     } catch {}
@@ -333,6 +548,13 @@ export default function AppPage() {
     setMoveResult(null);
     setMoveAttempted(false);
     setMoveError(null);
+    // Clear AI Copilot session state to prevent cross-tenant message leak
+    setChatMessages([]);
+    setChatInput("");
+    setAccountInsights(null);
+    setIsCopilotOpen(false);
+    setIsChatThinking(false);
+    setSuggestedPills(DEFAULT_SUGGESTIONS);
     addToast("Logged out successfully.");
   };
 
@@ -589,6 +811,183 @@ export default function AppPage() {
     return { totalCredits: cr, totalDebits: db, refusalCount: rf };
   }, [statements]);
 
+  // Deterministic local financial intelligence fallback
+  const localInsights = useMemo(() => {
+    const pList = statements.filter((s) => s.type === "posting");
+    const rList = statements.filter((s) => s.type === "refusal");
+    let cr = 0;
+    let db = 0;
+    for (const s of pList) {
+      if (s.amount > 0) cr += s.amount;
+      else db += Math.abs(s.amount);
+    }
+    const net = cr - db;
+    const avg = pList.length ? (cr + db) / pList.length : 0;
+    const vel = net / 30;
+    const maxPost = pList.length ? Math.max(...pList.map((s) => Math.abs(s.amount))) : 0;
+    const bal = activeAccount?.balance ?? 0;
+    const pj = bal + net;
+    const lo = pj - maxPost * 2;
+    const hi = pj + maxPost / 2;
+    const run = vel < 0 ? Math.floor(bal / -vel) : null;
+    const reasons: string[] = [];
+    let score = pList.length === 0 && rList.length === 0 ? 2 : pList.length <= 2 ? 6 : Math.min(12, 6 + Math.min(pList.length, 6));
+
+    if (activeAccount?.status === "frozen") {
+      score += 45;
+      reasons.push("Account is administratively FROZEN due to risk or compliance hold");
+    } else if (activeAccount?.status === "closed") {
+      score += 25;
+      reasons.push("Account is CLOSED; subsequent activity is restricted");
+    }
+
+    if (bal < 0) {
+      score += 25;
+      reasons.push("Operating in negative overdraft");
+    } else if (cr > 0) {
+      const drain = db / cr;
+      if (drain >= 0.95 && cr >= 10000) {
+        score += 20;
+        reasons.push(`High fund depletion: ${Math.round(drain * 100)}% of inflows withdrawn`);
+      } else if (drain >= 0.75 && cr >= 10000) {
+        score += 10;
+        reasons.push(`Elevated fund utilization: ${Math.round(drain * 100)}% of inflows transferred out`);
+      }
+    }
+
+    if (rList.length >= 5) {
+      score += 40;
+      reasons.push(`${rList.length} transaction attempts refused`);
+    } else if (rList.length >= 2) {
+      score += 25;
+      reasons.push(`${rList.length} transaction attempts refused`);
+    } else if (rList.length === 1) {
+      score += 12;
+      reasons.push("1 transaction refusal recorded on file");
+    }
+
+    if (!reasons.length) {
+      reasons.push(
+        pList.length === 0 && rList.length === 0
+          ? "Pristine account state with zero transaction history"
+          : "Account behavior aligns with normal operational baseline"
+      );
+    }
+
+    const clampedScore = Math.min(100, score);
+    const rangePercentage = hi > lo ? Math.max(0, Math.min(100, ((pj - lo) / (hi - lo)) * 100)) : 50;
+    return {
+      cr,
+      db,
+      avg,
+      n: pList.length,
+      rf: rList.length,
+      vel,
+      pj,
+      lo,
+      hi,
+      run,
+      score: clampedScore,
+      reasons,
+      rangePercentage,
+    };
+  }, [statements, activeAccount?.balance]);
+
+  const renderRiskGauge = (score: number) => {
+    const r = 60;
+    const L = Math.PI * r;
+    const bands = [
+      { start: 0, end: 0.4, color: "var(--acc)" },
+      { start: 0.4, end: 0.7, color: "var(--amb)" },
+      { start: 0.7, end: 0.85, color: "var(--org)" },
+      { start: 0.85, end: 1.0, color: "var(--bad)" },
+    ];
+    const theta = Math.PI * (1 - score / 100);
+    const cx = 70 + r * Math.cos(theta);
+    const cy = 70 - r * Math.sin(theta);
+
+    return (
+      <svg viewBox="0 0 140 84" className="gg" role="img" aria-label={`Risk score ${score} of 100`}>
+        {bands.map((b, i) => (
+          <path
+            key={i}
+            d="M10 70A60 60 0 0 1 130 70"
+            fill="none"
+            stroke={b.color}
+            strokeWidth="9"
+            strokeDasharray={`${(b.end - b.start) * L - 2} ${L}`}
+            strokeDashoffset={-b.start * L}
+          />
+        ))}
+        <circle cx={cx} cy={cy} r="7" style={{ fill: "var(--bg2)", stroke: "var(--fg)" }} strokeWidth="3" />
+        <text x="70" y="68" textAnchor="middle" className="gn">{score}</text>
+      </svg>
+    );
+  };
+
+  const getRiskBadge = (score: number): { label: string; color: string } => {
+    if (score < 40) return { label: "LOW RISK", color: "var(--acc)" };
+    if (score < 70) return { label: "MEDIUM RISK", color: "var(--amb)" };
+    if (score < 85) return { label: "HIGH RISK", color: "var(--org)" };
+    return { label: "CRITICAL ANOMALY", color: "var(--bad)" };
+  };
+
+  const escapeHtml = (s: string) =>
+    s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const inlineMd = (s: string) => escapeHtml(s).replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+
+  const renderMarkdown = (content: string) => {
+    const lines = content.split("\n");
+    const elements: React.ReactNode[] = [];
+    let currentList: string[] = [];
+
+    const flushList = () => {
+      if (currentList.length > 0) {
+        elements.push(
+          <ul key={`ul-${elements.length}`}>
+            {currentList.map((item, idx) => (
+              <li key={idx} dangerouslySetInnerHTML={{ __html: item }} />
+            ))}
+          </ul>
+        );
+        currentList = [];
+      }
+    };
+
+    lines.forEach((line, idx) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+        const itemText = inlineMd(trimmed.slice(2));
+        currentList.push(itemText);
+      } else if (trimmed.startsWith("### ") || trimmed.startsWith("## ")) {
+        flushList();
+        const hText = inlineMd(trimmed.replace(/^#+\s*/, ""));
+        elements.push(
+          <div key={`h-${idx}`} className="chat-h" dangerouslySetInnerHTML={{ __html: hText }} />
+        );
+      } else if (trimmed) {
+        flushList();
+        const isHighlight = trimmed.startsWith("**Answer:") || trimmed.startsWith("Answer:");
+        const pText = inlineMd(trimmed);
+        elements.push(
+          <p
+            key={`p-${idx}`}
+            className={isHighlight ? "ans-hl" : ""}
+            dangerouslySetInnerHTML={{ __html: pText }}
+          />
+        );
+      }
+    });
+    flushList();
+    return <div className="md chat-md">{elements}</div>;
+  };
+
   // Computed daily net movement for the last 12 calendar days from real ledger entries
   const dailyMovement = useMemo(() => {
     if (!clientNow) {
@@ -741,7 +1140,7 @@ export default function AppPage() {
   }, [auditResult, simulatedTamper]);
 
   return (
-    <div className="app-root" data-theme={theme}>
+    <div className={`app-root ${isCopilotOpen ? "cpo" : ""}`} data-theme={theme}>
       {/* Toast Overlay */}
       <div className="ts">
         {toasts.map((t) => (
@@ -883,7 +1282,7 @@ export default function AppPage() {
         /* ====================================================================
             2. APPLICATION SHELL & DASHBOARD
             ==================================================================== */
-        <>
+        <div id="app" className="app-main">
           <nav className="nv">
             <div className="wrap">
               <a className="logo" href="/">
@@ -903,6 +1302,13 @@ export default function AppPage() {
               </div>
 
               <div className="rt">
+                <button
+                  className="btn o sm askb"
+                  onClick={() => setIsCopilotOpen((prev) => !prev)}
+                  aria-label="Ask Ledger AI"
+                >
+                  ✦ Ask AI
+                </button>
                 <span className="chip n">{user.role}</span>
                 <button
                   className="tg"
@@ -1083,8 +1489,158 @@ export default function AppPage() {
                   </div>
                 </div>
 
+                {/* Account Intelligence Card */}
+                <div className="card c" style={{ "--i": 4, marginBottom: "18px" } as React.CSSProperties}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+                    <h3>Account intelligence</h3>
+                    <span className="chip n">AI · read-only</span>
+                  </div>
+                  <small>Computed from confirmed postings. It suggests, and never acts.</small>
+
+                  <div className="in3">
+                    <div className="st4">
+                      <div>
+                        <small>Available balance</small>
+                        <b className="mono">
+                          {accountInsights ? accountInsights.metrics.current_balance_formatted : formatPaise(activeAccount?.balance ?? 0)}
+                        </b>
+                        <span>Overdraft {accountInsights ? accountInsights.metrics.overdraft_limit_formatted : formatPaise(activeAccount?.overdraft_limit ?? 0)}</span>
+                      </div>
+                      <div>
+                        <small>7-day net flow</small>
+                        {(() => {
+                          const cr7 = accountInsights ? accountInsights.metrics.last_7d_credits : localInsights.cr;
+                          const db7 = accountInsights ? accountInsights.metrics.last_7d_debits : localInsights.db;
+                          const diff = cr7 - db7;
+                          return (
+                            <>
+                              <b className={`mono ${diff >= 0 ? "pos" : "neg"}`}>
+                                {diff >= 0 ? "+" : "−"}{formatPaise(Math.abs(diff))}
+                              </b>
+                              <span>
+                                {formatPaise(cr7)} in · {formatPaise(db7)} out
+                              </span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                      <div>
+                        <small>Average posting</small>
+                        <b className="mono">
+                          {accountInsights ? accountInsights.metrics.average_transaction_formatted : formatPaise(Math.round(localInsights.avg))}
+                        </b>
+                        <span>Across {accountInsights ? accountInsights.metrics.transaction_count : localInsights.n} postings</span>
+                      </div>
+                      <div>
+                        <small>Transactions</small>
+                        <b className="mono">
+                          {accountInsights
+                            ? accountInsights.metrics.transaction_count + accountInsights.metrics.refusal_count
+                            : localInsights.n + localInsights.rf}
+                        </b>
+                        <span>{accountInsights ? accountInsights.metrics.refusal_count : localInsights.rf} refused</span>
+                      </div>
+                    </div>
+
+                    {/* Risk score gauge */}
+                    {(() => {
+                      const score = accountInsights ? accountInsights.risk.score : localInsights.score;
+                      const reasons = accountInsights ? accountInsights.risk.reasons : localInsights.reasons;
+                      const badge = getRiskBadge(score);
+                      return (
+                        <div className="rkw">
+                          <div className="eb">RISK SCORE</div>
+                          {renderRiskGauge(score)}
+                          <div className="lb mono" style={{ fontWeight: 600, fontSize: "12px", letterSpacing: ".08em", color: badge.color }}>
+                            {badge.label}
+                          </div>
+                          <ul>
+                            {reasons.map((r, idx) => (
+                              <li key={idx}>{r}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* 4 Forecast Cards */}
+                  {(() => {
+                    const pj = accountInsights
+                      ? accountInsights.forecast.projected_balance_30d_formatted
+                      : formatPaise(Math.round(localInsights.pj));
+                    const velText = accountInsights
+                      ? accountInsights.forecast.daily_net_velocity_formatted
+                      : `${localInsights.vel >= 0 ? "+" : "−"}${formatPaise(Math.abs(Math.round(localInsights.vel)))}/day`;
+                    const velStatus = accountInsights
+                      ? accountInsights.forecast.burn_status === "surplus"
+                        ? "Surplus"
+                        : "Net burn"
+                      : localInsights.vel >= 0
+                      ? "Surplus"
+                      : "Net burn";
+                    const rangeText = accountInsights
+                      ? `${accountInsights.forecast.pessimistic_scenario_formatted} to ${accountInsights.forecast.optimistic_scenario_formatted}`
+                      : `${formatPaise(Math.round(localInsights.lo))} to ${formatPaise(Math.round(localInsights.hi))}`;
+                    const runwayText = accountInsights
+                      ? accountInsights.forecast.runway_days === null
+                        ? "Net surplus"
+                        : `${accountInsights.forecast.runway_days} days`
+                      : localInsights.run === null
+                      ? "Net surplus"
+                      : `${localInsights.run} days`;
+
+                    return (
+                      <div className="fcs">
+                        <div>
+                          <small>Projected · 30 days</small>
+                          <b className="mono">{pj}</b>
+                          <span>Expected</span>
+                        </div>
+                        <div>
+                          <small>Daily velocity</small>
+                          <b className="mono">{velText}</b>
+                          <span>{velStatus}</span>
+                        </div>
+                        <div>
+                          <small>Range</small>
+                          <b className="mono">
+                            {accountInsights
+                              ? accountInsights.forecast.pessimistic_scenario_formatted
+                              : formatPaise(Math.round(localInsights.lo))}
+                          </b>
+                          <span>
+                            to {accountInsights
+                              ? accountInsights.forecast.optimistic_scenario_formatted
+                              : formatPaise(Math.round(localInsights.hi))}
+                          </span>
+                        </div>
+                        <div>
+                          <small>Runway</small>
+                          <b className="mono">
+                            {accountInsights
+                              ? accountInsights.forecast.runway_days === null
+                                ? "No limit"
+                                : `${accountInsights.forecast.runway_days} days`
+                              : localInsights.run === null
+                              ? "No limit"
+                              : `${localInsights.run} days`}
+                          </b>
+                          <span>
+                            {(accountInsights
+                              ? accountInsights.forecast.runway_days === null
+                              : localInsights.run === null)
+                              ? "Net surplus"
+                              : "Until zero"}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
                 {/* Recent Activity Table */}
-                <div className="card c" style={{ "--i": 4 } as React.CSSProperties}>
+                <div className="card c" style={{ "--i": 5 } as React.CSSProperties}>
                   <div
                     style={{
                       display: "flex",
@@ -1433,6 +1989,81 @@ export default function AppPage() {
                     ))}
                   </div>
                 </div>
+
+                {/* Conservation Summary Card */}
+                <div
+                  className="card c"
+                  style={{ "--i": 3, marginTop: "18px" } as React.CSSProperties}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <h3>Conservation summary</h3>
+                    <span className={`chip ${auditResult && !auditResult.verified ? "b" : auditResult ? "" : "n"}`}>
+                      {!auditResult ? "NOT VERIFIED" : auditResult.verified ? "HELD" : "BROKEN"}
+                    </span>
+                  </div>
+                  <small>Global balance across customer and system accounts.</small>
+                  <div style={{ marginTop: "14px" }}>
+                    <div className="ac">
+                      <div className="ar2">
+                        <span>Conservation invariant</span>
+                        <b className={`chip ${auditResult && !auditResult.verified ? "b" : auditResult ? "" : "n"}`}>
+                          {!auditResult ? "NOT VERIFIED" : auditResult.verified ? "HELD" : "BROKEN"}
+                        </b>
+                      </div>
+                      <div className="ar2">
+                        <span>Global balance sum</span>
+                        <b className="mono">
+                          {auditResult ? formatPaise(auditResult.global_balance_sum) : "—"}
+                        </b>
+                      </div>
+                      <div className="ar2">
+                        <span>Customer funds backed</span>
+                        <b className="mono">
+                          {auditResult ? formatPaise(auditResult.customer_balance_sum) : "—"}
+                        </b>
+                      </div>
+                      <div className="ar2">
+                        <span>Journals · postings</span>
+                        <b className="mono">
+                          {auditResult ? `${auditResult.total_journals_verified} · ${auditResult.total_entries_verified}` : "—"}
+                        </b>
+                      </div>
+                      <div className="ar2">
+                        <span>Open surveillance flags</span>
+                        <b className="mono">{reviewFlags.filter((f) => f.status === "pending").length}</b>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Surveillance Queue Card */}
+                <div
+                  className="card c"
+                  style={{ "--i": 4, marginTop: "18px" } as React.CSSProperties}
+                >
+                  <h3>Surveillance queue</h3>
+                  <small>Open flags. Admins decide; auditors read.</small>
+                  <div style={{ marginTop: "12px" }}>
+                    {reviewFlags.length > 0 ? (
+                      reviewFlags.map((flag) => (
+                        <div key={`aud-flag-${flag.id}`} className="fl" style={{ marginTop: "8px" }}>
+                          <span className="chip a">{flag.rule_id}</span>
+                          <p style={{ margin: "6px 0 0" }}>{flag.narrative || JSON.stringify(flag.evidence)}</p>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="sm2" style={{ marginTop: "8px" }}>No open flags.</p>
+                    )}
+                  </div>
+                </div>
               </>
             )}
 
@@ -1582,7 +2213,7 @@ export default function AppPage() {
               </button>
             ))}
           </div>
-        </>
+        </div>
       )}
 
       {/* ====================================================================
@@ -1828,6 +2459,282 @@ export default function AppPage() {
             )}
           </div>
         </div>
+      )}
+
+      {/* ====================================================================
+          3. LEDGER AI COPILOT & SURVEILLANCE DRAWER
+          ==================================================================== */}
+      {user && (
+        <>
+          <button
+            className={`cpb ${isCopilotOpen ? "open" : ""}`}
+            onClick={() => setIsCopilotOpen(false)}
+            aria-label="Close assistant"
+          />
+
+          <aside className={`cp ${isCopilotOpen ? "open" : ""}`} aria-label="Ledger AI">
+            <div className="ch">
+              <div className="chl">
+                <span className="mk">✦</span>
+                <div>
+                  <b>Ledger AI</b>
+                  <small className="pvd">
+                    <i />
+                    {activeProvider}
+                  </small>
+                </div>
+              </div>
+              <div className="chr">
+                <button
+                  className="ib"
+                  onClick={() => {
+                    sessionGenRef.current += 1;
+                    setChatMessages([]);
+                    setIsChatThinking(false);
+                    setSuggestedPills(DEFAULT_SUGGESTIONS);
+                  }}
+                  aria-label="New chat"
+                  title="Reset conversation"
+                >
+                  ↺
+                </button>
+                <button
+                  className="ib"
+                  onClick={() => setIsCopilotOpen(false)}
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+
+            <div className="sh2">
+              <span className="chip">I8</span>
+              <p>
+                <b>Read-only surveillance.</b> AI analyses and recommends. It can never authorise or move funds.
+              </p>
+            </div>
+
+            <div className="cb" ref={chatScrollRef}>
+              {chatMessages.length === 0 ? (
+                <div className="ce">
+                  <div className="mk">✦</div>
+                  <h3>
+                    Ask about your <em>ledger.</em>
+                  </h3>
+                  <p>
+                    Search entries, forecast cash flow, and check risk. I read and explain. I never move money.
+                  </p>
+                  <div className="sg">
+                    {DEFAULT_SUGGESTIONS.slice(0, 4).map((q, idx) => (
+                      <button key={idx} onClick={() => handleSendChat(q)}>
+                        {q}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                chatMessages.map((m) => (
+                  <div key={m.id} className={`m ${m.role === "user" ? "u" : ""}`}>
+                    {m.role === "assistant" && <span className="mk s">✦</span>}
+                    {m.role === "user" ? (
+                      <div className="bb2">{m.text}</div>
+                    ) : (
+                      <div className="ab">
+                        {m.response?.reply && renderMarkdown(m.response.reply)}
+
+                        {/* Dynamic Insight Cards */}
+                        {m.response?.insights && m.response.insights.length > 0 && (
+                          <div className="ig">
+                            {m.response.insights.map((card, cIdx) => (
+                              <div key={cIdx} className={`ic s-${card.sentiment || "neutral"}`}>
+                                <small>{card.title}</small>
+                                <b className="mono">{card.value}</b>
+                                <span>{card.change}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* 1. Forecast Card (fcard) */}
+                        {m.response?.data_payload?.forecast && (
+                          <div className="ac fc">
+                            <div className="eb">PROJECTED BALANCE · 30 DAYS</div>
+                            <div className="bgn mono">
+                              {m.response.data_payload.forecast.projected_balance_30d_formatted}
+                            </div>
+                            <span className={`chip ${m.response.data_payload.forecast.burn_status === "surplus" ? "" : "b"}`}>
+                              {m.response.data_payload.forecast.velocity_label || m.response.data_payload.forecast.daily_net_velocity_formatted}
+                            </span>
+                            <div className="rng">
+                              <i style={{ left: `${m.response.data_payload.forecast.range_percentage ?? 50}%` }} />
+                            </div>
+                            <div className="rl mono">
+                              <span>Pessimistic {m.response.data_payload.forecast.pessimistic_scenario_formatted}</span>
+                              <span>Optimistic {m.response.data_payload.forecast.optimistic_scenario_formatted}</span>
+                            </div>
+                            <p className="sm2" style={{ margin: "10px 0 0" }}>
+                              Runway: {m.response.data_payload.forecast.runway_days === null ? "not at risk, net surplus" : `${m.response.data_payload.forecast.runway_days} days`}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* 2. Embedded Risk Score Card (rcard) */}
+                        {m.response?.risk_score !== undefined && m.response?.risk_score !== null && (m.response?.intent === "anomaly" || m.response.risk_score >= 35) && (
+                          <div className="ac rkc">
+                            {renderRiskGauge(m.response.risk_score)}
+                            <div
+                              className="lb mono"
+                              style={{
+                                color: getRiskBadge(m.response.risk_score).color,
+                              }}
+                            >
+                              {m.response.risk_level || getRiskBadge(m.response.risk_score).label}
+                            </div>
+                            {m.response.risk_reasons && (
+                              <ul>
+                                {m.response.risk_reasons.map((r, rIdx) => (
+                                  <li key={rIdx}>{r}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        )}
+
+                        {/* 3. Ledger Search Card (scard) */}
+                        {m.response?.data_payload?.search_results && m.response.data_payload.search_results.length > 0 && (
+                          <div className="ac">
+                            {m.response.data_payload.search_results.map((row: any, sIdx: number) => {
+                              const isRef = !!row.is_refusal;
+                              const isNeg = !isRef && row.amount < 0;
+                              return (
+                                <a
+                                  key={sIdx}
+                                  href="#statement"
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    setCurrentTab("statement");
+                                    setIsCopilotOpen(false);
+                                  }}
+                                  className={`sr ${isRef ? "rf" : ""}`}
+                                >
+                                  <div>
+                                    <b>#{row.seq} · {row.kind || (isRef ? "Withdrawal" : "Posting")}</b>
+                                    {isRef && <span className="chip b" style={{ marginLeft: "6px" }}>Refused · {row.reason || "declined"}</span>}
+                                    <small>
+                                      {row.memo ? `${row.memo} · ` : ""}
+                                      {row.balance_after_formatted ? `Balance after ${row.balance_after_formatted}` : "Refusal committed"}
+                                    </small>
+                                  </div>
+                                  <b className={`mono ${isRef ? "" : isNeg ? "neg" : "pos"}`}>
+                                    {row.amount_formatted}
+                                  </b>
+                                </a>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        {/* 4. Global Reconciliation Card (ccard) */}
+                        {Boolean(m.response?.data_payload?.reconciliation && (m.response?.intent === "reconciliation" || !activeAccount)) && (() => {
+                          const r = m.response?.data_payload?.reconciliation;
+                          const isBal = Boolean(r?.is_balanced);
+                          return (
+                            <div className="ac">
+                              <div className="ar2">
+                                <span>Conservation invariant</span>
+                                <b className={`chip ${!isBal ? "b" : ""}`}>
+                                  {r?.conservation_invariant || (isBal ? "HELD" : "DISCREPANCY")}
+                                </b>
+                              </div>
+                              <div className="ar2">
+                                <span>Global balance sum</span>
+                                <b className="mono">{r?.global_balance_formatted || "—"}</b>
+                              </div>
+                              <div className="ar2">
+                                <span>Customer funds backed</span>
+                                <b className="mono">{r?.total_customer_funds_formatted || "—"}</b>
+                              </div>
+                              <div className="ar2">
+                                <span>Journals · postings</span>
+                                <b className="mono">
+                                  {r ? `${r.total_journals} · ${r.total_ledger_entries}` : "—"}
+                                </b>
+                              </div>
+                              <div className="ar2">
+                                <span>Open surveillance flags</span>
+                                <b className="mono">{r?.open_surveillance_flags ?? 0}</b>
+                              </div>
+                            </div>
+                          );
+                        })()}
+
+                        {/* Tool tag chip */}
+                        <div className="tcs">
+                          <span className="chip n mono">{m.tool || "read-only · intelligence"}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+
+              {/* Loading / Thinking dots */}
+              {isChatThinking && (
+                <div className="m">
+                  <span className="mk s">✦</span>
+                  <div className="dt">
+                    <i />
+                    <i />
+                    <i />
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Suggested Query Pills */}
+            {chatMessages.length > 0 && suggestedPills.length > 0 && (
+              <div className="pl">
+                {suggestedPills.map((q, pIdx) => (
+                  <button key={pIdx} onClick={() => handleSendChat(q)}>
+                    {q}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Chat Form */}
+            <form
+              className="cf"
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSendChat();
+              }}
+            >
+              <input
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                placeholder="Ask about transfers, refusals, forecast…"
+                autoComplete="off"
+                enterKeyHint="send"
+                disabled={isChatThinking}
+              />
+              <button className="send2" aria-label="Send" disabled={isChatThinking || !chatInput.trim()}>
+                ↑
+              </button>
+            </form>
+            <p className="cn">AI can be wrong. The statement is the source of truth.</p>
+          </aside>
+
+          {/* Mobile FAB button */}
+          <button
+            className="fab"
+            onClick={() => setIsCopilotOpen(true)}
+            aria-label="Ask Ledger AI"
+          >
+            ✦
+          </button>
+        </>
       )}
     </div>
   );

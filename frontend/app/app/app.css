@@ -240,14 +240,26 @@
   color: var(--bg);
 }
 
+.nv,
 .app-root .nv {
   position: sticky;
+  top: 0;
   top: env(safe-area-inset-top, 0px);
   z-index: 30;
-  background: color-mix(in srgb, var(--bg) 85%, transparent);
-  backdrop-filter: blur(14px);
+  background-color: rgba(246, 245, 241, 0.85);
+  background-color: color-mix(in srgb, var(--bg) 85%, transparent);
   -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid var(--line);
+  will-change: backdrop-filter;
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+[data-theme="dark"] .nv,
+.app-root[data-theme="dark"] .nv {
+  background-color: rgba(11, 13, 12, 0.85);
+  background-color: color-mix(in srgb, var(--bg) 85%, transparent);
 }
 
 .app-root .nv .wrap {
@@ -861,11 +873,74 @@
   z-index: 60;
   background: rgba(8, 10, 9, 0.55);
   backdrop-filter: blur(6px);
-  display: flex;
+  -webkit-backdrop-filter: blur(6px);
+  display: none;
   align-items: center;
   justify-content: center;
   padding: 16px;
+}
+
+.app-root .md.on {
+  display: flex;
   animation: app-fi 0.3s;
+}
+
+.app-root .ab .md,
+.app-root .ab .chat-md {
+  position: static;
+  inset: auto;
+  z-index: auto;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  display: block;
+  padding: 0;
+  animation: none;
+}
+
+.app-root .ab .md p,
+.app-root .ab .chat-md p,
+.app-root .md p {
+  margin: 0 0 8px;
+}
+
+.app-root .ab .md ul,
+.app-root .ab .chat-md ul,
+.app-root .md ul {
+  margin: 0 0 8px;
+  padding-left: 18px;
+  color: var(--mut);
+}
+
+.app-root .ab .md b,
+.app-root .ab .chat-md b,
+.app-root .md b {
+  font-weight: 600;
+}
+
+.app-root .ab .chat-md .ans-hl {
+  display: block;
+  padding: 10px 14px;
+  background: var(--tint);
+  color: var(--acc);
+  border-radius: 12px;
+  font-size: 13.5px;
+  line-height: 1.45;
+  margin-bottom: 12px;
+  border-left: 3px solid var(--acc);
+}
+
+[data-theme="dark"] .app-root .ab .chat-md .ans-hl {
+  background: color-mix(in srgb, var(--acc) 12%, transparent);
+  color: var(--acc);
+}
+
+.app-root .ab .chat-md .chat-h {
+  font: 600 13px/1.4 "Inter Tight", sans-serif;
+  letter-spacing: -0.01em;
+  text-transform: uppercase;
+  margin: 10px 0 6px;
+  color: var(--mut);
 }
 
 @keyframes app-fi {
@@ -1086,3 +1161,698 @@
     transition: none !important;
   }
 }
+
+/* ==============================================================================
+   Ledger AI Copilot & Account Intelligence
+   Ported from frontend/LedgerLine — app.html
+   ============================================================================== */
+
+:root {
+  --org: #c2570c;
+}
+:root[data-theme="dark"],
+[data-theme="dark"] {
+  --org: #ff9f5a;
+}
+
+.app-root .cp {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 400px;
+  max-width: 100%;
+  z-index: 55;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border-left: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top, 0px);
+  transform: translateX(102%);
+  visibility: hidden;
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.5s, visibility 0s linear 0.55s;
+  box-shadow: -30px 0 60px -40px rgba(0, 0, 0, 0.35);
+}
+
+body.cpo .app-root .cp,
+.app-root.cpo .cp,
+.app-root .cp.open {
+  transform: none;
+  visibility: visible;
+  transition: transform 0.55s cubic-bezier(0.2, 0.8, 0.2, 1), background-color 0.5s, visibility 0s;
+}
+
+.app-root .cpb {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 54;
+  border: 0;
+  background: rgba(8, 10, 9, 0.45);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: default;
+}
+
+#app,
+.app-root #app,
+.app-root .app-main {
+  transition: margin-right 0.55s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@media (min-width: 1100px) {
+  body.cpo #app,
+  body.cpo .app-root #app,
+  body.cpo .app-main,
+  .app-root.cpo #app,
+  .app-root.cpo .app-main {
+    margin-right: 400px;
+  }
+}
+@media (max-width: 1099px) {
+  body.cpo .app-root .cpb,
+  .app-root.cpo .cpb,
+  .app-root .cpb.open {
+    display: block;
+  }
+}
+
+.app-root .ch {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--line);
+}
+
+.app-root .chl {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.app-root .chl b {
+  display: block;
+  font: 600 16px "Inter Tight", sans-serif;
+}
+
+.app-root .chl small {
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.app-root .chr {
+  display: flex;
+  gap: 4px;
+}
+
+.app-root .mk {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: var(--tint);
+  color: var(--acc);
+  flex: none;
+  font-size: 15px;
+}
+
+.app-root .mk.s {
+  width: 28px;
+  height: 28px;
+  border-radius: 9px;
+  font-size: 12px;
+}
+
+.app-root .ib {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 0;
+  background: transparent;
+  color: var(--mut);
+  cursor: pointer;
+  font-size: 15px;
+  display: grid;
+  place-items: center;
+  transition: all 0.2s;
+}
+
+.app-root .ib:hover {
+  background: var(--bg);
+  color: var(--fg);
+}
+
+.app-root .cb {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  scroll-behavior: smooth;
+  overscroll-behavior: contain;
+}
+
+.app-root .ce {
+  margin: auto 0;
+}
+
+.app-root .ce h3 {
+  font-size: 28px;
+  margin: 16px 0 8px;
+}
+
+.app-root .ce p {
+  color: var(--mut);
+  margin: 0 0 20px;
+  font-size: 15px;
+}
+
+.app-root .sg {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.app-root .sg button {
+  text-align: left;
+  padding: 14px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  font: 500 14px Inter, sans-serif;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.app-root .sg button:hover {
+  border-color: var(--acc);
+  transform: translateX(4px);
+}
+
+.app-root .m {
+  display: flex;
+  gap: 10px;
+  animation: app-up 0.5s both;
+}
+
+.app-root .m.u {
+  justify-content: flex-end;
+}
+
+.app-root .bb2 {
+  max-width: 85%;
+  padding: 11px 16px;
+  border-radius: 20px 20px 6px 20px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 15px;
+  word-break: break-word;
+}
+
+.app-root .ab {
+  min-width: 0;
+  flex: 1;
+  font-size: 15px;
+}
+
+.app-root .ab p {
+  margin: 3px 0 10px;
+}
+
+.app-root .ac {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  overflow: hidden;
+  background: var(--bg);
+  margin-bottom: 10px;
+}
+
+.app-root .ar2 {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  font-size: 14px;
+  border-top: 1px solid var(--line);
+  transition: background 0.2s;
+}
+
+.app-root .ar2:first-child {
+  border: 0;
+}
+
+.app-root .ar2:hover {
+  background: var(--tint);
+}
+
+.app-root .rk {
+  padding: 14px;
+}
+
+.app-root .rs b {
+  font: 600 40px "Inter Tight", sans-serif;
+  letter-spacing: -0.04em;
+  color: var(--bad);
+}
+
+.app-root .rs small {
+  color: var(--mut);
+  margin-left: 6px;
+}
+
+.app-root .rk ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--mut);
+  font-size: 14px;
+}
+
+.app-root .tcs {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.app-root .dt {
+  display: flex;
+  gap: 5px;
+  padding: 12px 0;
+}
+
+.app-root .dt i {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mut);
+  animation: app-bn 1.2s infinite;
+}
+
+.app-root .dt i:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.app-root .dt i:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes app-bn {
+  50% {
+    transform: translateY(-5px);
+    opacity: 0.4;
+  }
+}
+
+.app-root .cf {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 4px;
+}
+
+.app-root .cf input {
+  margin: 0;
+  border-radius: 99px;
+  padding: 13px 18px;
+  font-size: 16px;
+}
+
+.app-root .send2 {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 18px;
+  cursor: pointer;
+  flex: none;
+  display: grid;
+  place-items: center;
+  transition: transform 0.3s;
+}
+
+.app-root .send2:hover {
+  transform: translateY(-2px);
+}
+
+.app-root .cn {
+  margin: 0;
+  padding: 6px 16px calc(env(safe-area-inset-bottom, 0px) + 12px);
+  color: var(--mut);
+  font-size: 11px;
+  text-align: center;
+}
+
+.app-root .fab {
+  display: none;
+  position: fixed;
+  right: 16px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 92px);
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 20px;
+  z-index: 45;
+  cursor: pointer;
+  box-shadow: 0 14px 30px -8px rgba(0, 0, 0, 0.45);
+}
+
+@media (max-width: 900px) {
+  .app-root .fab {
+    display: grid;
+    place-items: center;
+  }
+  body.cpo .app-root .fab,
+  .app-root.cpo .fab {
+    display: none;
+  }
+  .app-root .askb {
+    display: none;
+  }
+  .app-root .cp {
+    top: auto;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    height: min(88vh, 760px);
+    border-radius: 28px 28px 0 0;
+    border: 1px solid var(--line);
+    transform: translateY(105%);
+    padding-top: 0;
+  }
+  .app-root .ch {
+    position: relative;
+    padding-top: 24px;
+  }
+  .app-root .ch::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 40px;
+    height: 4px;
+    margin-left: -20px;
+    border-radius: 9px;
+    background: var(--line);
+  }
+}
+
+.app-root .eb {
+  font: 500 11px "JetBrains Mono", monospace;
+  letter-spacing: 0.1em;
+  color: var(--mut);
+}
+
+.app-root .pvd {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.app-root .pvd i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--acc);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--acc) 22%, transparent);
+}
+
+.app-root .sh2 {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 12px 16px 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--tint);
+  color: var(--acc);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.app-root .sh2 p {
+  margin: 0;
+}
+
+.app-root .sh2 .chip {
+  background: var(--acc);
+  color: var(--bg2);
+  flex: none;
+}
+
+.app-root .pl {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 10px 16px 0;
+  scrollbar-width: none;
+}
+
+.app-root .pl::-webkit-scrollbar {
+  display: none;
+}
+
+.app-root .pl button {
+  flex: none;
+  padding: 9px 14px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--fg);
+  font: 500 13px Inter, sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.25s;
+}
+
+.app-root .pl button:hover {
+  border-color: var(--acc);
+  color: var(--acc);
+}
+
+.app-root .ig {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.app-root .ic {
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  min-width: 0;
+}
+
+.app-root .ic small {
+  display: block;
+  color: var(--mut);
+  font-size: 11px;
+}
+
+.app-root .ic b {
+  display: block;
+  font: 600 18px "Inter Tight", sans-serif;
+  letter-spacing: -0.03em;
+  margin: 2px 0;
+}
+
+.app-root .ic span {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.app-root .ic.s-positive span {
+  color: var(--acc);
+}
+.app-root .ic.s-warning span {
+  color: var(--amb);
+}
+.app-root .ic.s-negative span {
+  color: var(--bad);
+}
+
+.app-root .fc {
+  padding: 16px;
+}
+
+.app-root .bgn {
+  font: 600 32px "Inter Tight", sans-serif;
+  letter-spacing: -0.04em;
+  margin: 4px 0 8px;
+}
+
+.app-root .rng {
+  position: relative;
+  height: 8px;
+  border-radius: 9px;
+  background: linear-gradient(90deg, var(--badt), var(--tint));
+  margin: 16px 0 6px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.app-root .rng i {
+  position: absolute;
+  top: -4px;
+  width: 16px;
+  height: 16px;
+  margin-left: -8px;
+  border-radius: 50%;
+  background: var(--bg2);
+  border: 3px solid var(--acc);
+}
+
+.app-root .rl {
+  display: flex;
+  justify-content: space-between;
+  color: var(--mut);
+  font-size: 11px;
+}
+
+.app-root .gg {
+  width: 150px;
+  display: block;
+  margin: 0 auto;
+}
+
+.app-root .gn {
+  font: 600 28px "Inter Tight", sans-serif;
+  fill: var(--fg);
+}
+
+.app-root .rkc {
+  padding: 16px;
+  text-align: center;
+}
+
+.app-root .rkc ul {
+  text-align: left;
+  margin: 12px 0 0;
+  padding-left: 18px;
+  color: var(--mut);
+  font-size: 14px;
+}
+
+.app-root .rkc .lb {
+  font: 600 12px "JetBrains Mono", monospace;
+  letter-spacing: 0.08em;
+}
+
+.app-root .sr {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+  transition: background 0.2s;
+  text-decoration: none;
+  color: inherit;
+}
+
+.app-root .sr:first-child {
+  border: 0;
+}
+
+.app-root .sr:hover {
+  background: var(--tint);
+}
+
+.app-root .sr small {
+  display: block;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.app-root .sr.rf {
+  background: var(--badt);
+}
+
+.app-root .in3 {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.app-root .st4,
+.app-root .fcs {
+  display: grid;
+  gap: 10px;
+}
+
+.app-root .st4 {
+  grid-template-columns: 1fr 1fr;
+}
+
+.app-root .fcs {
+  grid-template-columns: repeat(4, 1fr);
+  margin-top: 12px;
+}
+
+.app-root .st4 > div,
+.app-root .fcs > div,
+.app-root .rkw {
+  padding: 16px;
+  border-radius: 16px;
+  background: var(--bg);
+  box-shadow: inset 0 0 0 1px var(--line);
+  min-width: 0;
+}
+
+.app-root .st4 small,
+.app-root .fcs small {
+  display: block;
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.app-root .st4 b,
+.app-root .fcs b {
+  display: block;
+  font: 600 19px "Inter Tight", sans-serif;
+  letter-spacing: -0.03em;
+  margin: 4px 0 2px;
+  overflow-wrap: anywhere;
+}
+
+.app-root .st4 span,
+.app-root .fcs span {
+  font-size: 12px;
+  color: var(--mut);
+}
+
+.app-root .rkw {
+  text-align: center;
+}
+
+.app-root .rkw ul {
+  text-align: left;
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--mut);
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+  .app-root .in3 {
+    grid-template-columns: 1fr;
+  }
+  .app-root .fcs {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+

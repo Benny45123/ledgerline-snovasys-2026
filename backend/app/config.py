@@ -52,8 +52,14 @@ class Settings(BaseSettings):
     LOCK_TIMEOUT_MS: int = Field(default=3000, description="PostgreSQL row lock timeout in ms (3s)")
     STATEMENT_TIMEOUT_MS: int = Field(default=10000, description="PostgreSQL statement timeout in ms (10s)")
 
-    LLM_ENABLED: bool = Field(default=False, description="Enable optional AI narrative explanations")
-    LLM_API_KEY: str | None = Field(default=None, description="Optional LLM API key")
+    LLM_ENABLED: bool = Field(default=False, description="Enable external LLM synthesis for the copilot")
+    LLM_PROVIDER: str = Field(default="auto", description="LLM provider: auto | groq | gemini | offline")
+    LLM_API_KEY: str | None = Field(default=None, description="Generic LLM API key fallback")
+    GROQ_API_KEY: str | None = Field(default=None, description="Groq API key")
+    GROQ_MODEL: str = Field(default="llama-3.3-70b-versatile", description="Groq model name")
+    GEMINI_API_KEY: str | None = Field(default=None, description="Google Gemini API key")
+    GEMINI_MODEL: str = Field(default="gemini-2.5-flash", description="Google Gemini model name")
+    DOCS_ENABLED: bool = Field(default=True, description="Enable /docs and /redoc OpenAPI documentation")
 
     @field_validator("ENV")
     @classmethod

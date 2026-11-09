@@ -102,6 +102,96 @@ export interface ReviewFlag {
   created_at: string;
 }
 
+export interface InsightCard {
+  title: string;
+  value: string;
+  change?: string | null;
+  sentiment: "positive" | "neutral" | "warning" | "negative";
+}
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  account_id?: string | null;
+  history?: ChatMessage[];
+}
+
+export interface ChatResponse {
+  reply: string;
+  provider: string;
+  model: string;
+  intent: string;
+  risk_score?: number | null;
+  risk_level?: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | null;
+  risk_reasons?: string[];
+  insights: InsightCard[];
+  suggested_queries: string[];
+  data_payload?: Record<string, any> | null;
+}
+
+export interface AccountInsights {
+  account_id: string;
+  metrics: {
+    account_id: string;
+    number: string;
+    name: string;
+    currency: string;
+    current_balance: number;
+    current_balance_formatted: string;
+    overdraft_limit: number;
+    overdraft_limit_formatted: string;
+    total_credits: number;
+    total_credits_formatted: string;
+    total_debits: number;
+    total_debits_formatted: string;
+    net_cash_flow: number;
+    net_cash_flow_formatted: string;
+    last_7d_credits: number;
+    last_7d_credits_formatted: string;
+    last_7d_debits: number;
+    last_7d_debits_formatted: string;
+    largest_credit_formatted: string;
+    largest_debit_formatted: string;
+    average_transaction_formatted: string;
+    transaction_count: number;
+    refusal_count: number;
+    recent_transactions: Array<{
+      seq: number;
+      kind: string;
+      amount: number;
+      amount_formatted: string;
+      balance_after_formatted: string;
+      memo: string;
+      created_at: string;
+    }>;
+  };
+  risk: {
+    score: number;
+    level: "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+    reasons: string[];
+  };
+  forecast: {
+    daily_net_velocity?: number;
+    daily_net_velocity_paise?: number;
+    daily_net_velocity_formatted: string;
+    projected_balance_30d?: number;
+    projected_balance_30d_paise?: number;
+    projected_balance_30d_formatted: string;
+    optimistic_scenario_paise?: number;
+    optimistic_scenario_formatted: string;
+    pessimistic_scenario_paise?: number;
+    pessimistic_scenario_formatted: string;
+    range_percentage?: number;
+    velocity_label?: string;
+    runway_days: number | null;
+    burn_status: "surplus" | "deficit";
+  };
+}
+
 export class ApiError extends Error {
   code: string;
   requestId: string;
@@ -359,5 +449,19 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ decision, reason }),
     });
+  },
+
+  // AI Copilot & Financial Intelligence
+  async chatWithCopilot(req: ChatRequest): Promise<ChatResponse> {
+    const { data } = await request<ChatResponse>("/review/chat", {
+      method: "POST",
+      body: JSON.stringify(req),
+    });
+    return data;
+  },
+
+  async getAccountInsights(accountId: string): Promise<AccountInsights> {
+    const { data } = await request<AccountInsights>(`/review/accounts/${accountId}/insights`);
+    return data;
   },
 };

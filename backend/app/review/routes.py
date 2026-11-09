@@ -9,6 +9,7 @@ Neither AI nor flags can ever reverse, debit, or credit an account directly.
 
 from datetime import UTC, datetime
 from typing import Any, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -16,9 +17,12 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.engine import get_db
-from app.db.models import ReviewDecision, ReviewFlag, User
-from app.deps import require_role
+from app.db.models import Account, AccountMember, ReviewDecision, ReviewFlag, User
+from app.deps import get_current_user, require_role
 from app.errors import NotFoundError
+from app.review.analytics import compute_fraud_risk_score, forecast_cash_flow, get_account_metrics
+from app.review.copilot import query_copilot
+from app.review.schemas import ChatRequest, ChatResponse
 
 router = APIRouter(prefix="/review", tags=["Review & Surveillance"])
 
@@ -135,3 +139,63 @@ def record_decision(
         "decision": canonical_decision,
         "decided_by": str(current_user.id),
     }
+
+
+@router.post("/chat", response_model=ChatResponse)
+def copilot_chat(
+    req: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ChatResponse:
+    """
+    Conversational AI Financial Intelligence & Copilot.
+    Authorized across holder, admin, and auditor roles with strict IDOR protections.
+    Under Invariant I8, this endpoint is strictly read-only and never mutates ledger state.
+    """
+    return query_copilot(
+        db=db,
+        user=current_user,
+        message=req.message,
+        context_account_id=req.account_id,
+        history=req.history,
+    )
+
+
+@router.get("/accounts/{account_id}/insights")
+def get_account_insights(
+    account_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """
+    Retrieve read-only financial intelligence metrics, fraud risk score,
+    and cash flow forecast for an account. Enforces IDOR boundary on account membership.
+    """
+    if current_user.role == "holder":
+        membership = (
+            db.query(AccountMember)
+            .filter(AccountMember.account_id == account_id, AccountMember.user_id == current_user.id)
+            .first()
+        )
+        if not membership:
+            raise NotFoundError("Account not found.")
+
+    account = db.query(Account).filter(Account.id == account_id).first()
+    if not account:
+        raise NotFoundError("Account not found.")
+
+    metrics = get_account_metrics(db, account_id)
+    score, level, reasons = compute_fraud_risk_score(db, account_id)
+    forecast = forecast_cash_flow(db, account_id)
+
+    return {
+        "account_id": str(account_id),
+        "metrics": metrics,
+        "risk": {
+            "score": score,
+            "level": level,
+            "reasons": reasons,
+        },
+        "forecast": forecast,
+    }
+

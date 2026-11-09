@@ -63,6 +63,11 @@
   - Eliminated stale closure in `refreshStatements()` and fixed `UndefinedTable` SQL query alias error in `get_account_statement()` (`backend/app/ledger/queries.py`).
 - [x] Submission Write-Up & Evaluation Form Answers (`docs/WRITEUP.md`):
   - 750-word comprehensive write-up and exact answers to the 6 hackathon submission questions.
+- [x] Dynamic Multi-Factor Fraud Risk Scoring & Copilot Presentation Scoping:
+  - Replaced static `score = 5` with a dynamic multi-factor engine in `backend/app/review/analytics.py` evaluating administrative governance/freeze (+45), recent 48h and lifetime refusals (+12 to +40), active compliance surveillance flags (+20 to +35), balance drain ratio (>75%/95% of inflows drained) (+10 to +20), rapid succession transactions (<180s apart) (+12), velocity bursts, and outlier outflows (+15 to +18).
+  - Scoped Global Ledger Reconciliation card in `backend/app/review/copilot.py` and `frontend/app/app/page.tsx` strictly to explicit reconciliation queries (`intent === "reconciliation"`) or the global auditor view (`!currentAccount`), eliminating global card spam when inspecting customer accounts.
+  - Scoped the full circular SVG risk gauge card to `intent === "anomaly"` or elevated risk (`risk_score >= 35`), keeping normal query responses clean with the top compact insight pill.
+  - Added unit test `test_dynamic_risk_scoring_and_reconciliation_scoping` in `backend/tests/unit/test_copilot.py` (8/8 tests passing).
 
 ## In Progress
 - [ ] Final smoke check of live deployment and incognito demo credentials.
