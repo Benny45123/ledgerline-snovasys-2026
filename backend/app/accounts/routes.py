@@ -25,7 +25,7 @@ from app.accounts.service import (
     unfreeze_account,
 )
 from app.db.engine import get_db
-from app.db.models import Account, AccountMember, Journal, User
+from app.db.models import Account, AccountMember, Journal, LedgerEntry, User
 from app.deps import get_current_user, get_request_id, require_role
 from app.errors import (
     ForbiddenError,
@@ -39,11 +39,13 @@ from app.ledger.schemas import (
     AdjustmentRequest,
     DepositRequest,
     MovementResponse,
+    ReversalRequest,
     StatementResponse,
     TransferRequest,
     WithdrawRequest,
 )
 from app.ledger.service import post_movement
+from app.review.rules import evaluate_transaction_for_flags
 
 router = APIRouter(tags=["Accounts & Money Movement"])
 
@@ -151,6 +153,7 @@ def get_statement(
     account_id: UUID,
     after: Optional[int] = None,
     limit: int = 50,
+    order: str = "asc",
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> StatementResponse:
@@ -168,7 +171,7 @@ def get_statement(
         if not is_member:
             raise NotFoundError("Account not found.")
 
-    return get_account_statement(db, account_id, after_seq=after, limit=limit)
+    return get_account_statement(db, account_id, after_seq=after, limit=limit, order=order)
 
 
 @router.post("/accounts/{account_id}/deposit", response_model=MovementResponse)
@@ -178,7 +181,7 @@ def deposit(
     response: Response,
     idempotency_key: str = Depends(require_idempotency_key),
     request_id: str = Depends(get_request_id),
-    current_user: User = Depends(require_role("holder", "admin")),
+    current_user: User = Depends(require_role("holder")),
     db: Session = Depends(get_db),
 ) -> MovementResponse:
     """Deposit external funds into an account."""
@@ -208,6 +211,11 @@ def deposit(
         raw_payload=req.model_dump(),
         memo=req.memo,
     )
+
+    if not is_replayed:
+        journal = db.query(Journal).filter(Journal.id == movement.journal_id).first()
+        if journal:
+            evaluate_transaction_for_flags(db, journal, acc.id, req.amount)
 
     if is_replayed:
         response.headers["Idempotent-Replayed"] = "true"
@@ -251,6 +259,11 @@ def withdraw(
         memo=req.memo,
     )
 
+    if not is_replayed:
+        journal = db.query(Journal).filter(Journal.id == movement.journal_id).first()
+        if journal:
+            evaluate_transaction_for_flags(db, journal, acc.id, req.amount)
+
     if is_replayed:
         response.headers["Idempotent-Replayed"] = "true"
     return movement
@@ -267,8 +280,11 @@ def transfer(
 ) -> MovementResponse:
     """Transfer funds from caller's account to any active recipient account by number."""
     dest_acc = db.query(Account).filter(Account.number == req.to_account_number).first()
-    if not dest_acc or dest_acc.status != "active":
+    if not dest_acc or dest_acc.status != "active" or dest_acc.kind != "customer":
         raise InvalidDestinationError()
+
+    if req.from_account_id == dest_acc.id:
+        raise ValidationError("Source and destination accounts must be distinct.")
 
     movement, is_replayed = post_movement(
         db=db,
@@ -282,6 +298,11 @@ def transfer(
         raw_payload=req.model_dump(),
         memo=req.memo,
     )
+
+    if not is_replayed:
+        journal = db.query(Journal).filter(Journal.id == movement.journal_id).first()
+        if journal:
+            evaluate_transaction_for_flags(db, journal, req.from_account_id, req.amount)
 
     if is_replayed:
         response.headers["Idempotent-Replayed"] = "true"
@@ -367,6 +388,67 @@ def admin_adjustment(
         raw_payload=req.model_dump(),
         memo=req.reason,
     )
+
+    if not is_replayed:
+        journal = db.query(Journal).filter(Journal.id == movement.journal_id).first()
+        if journal:
+            evaluate_transaction_for_flags(db, journal, acc.id, amt)
+
+    if is_replayed:
+        response.headers["Idempotent-Replayed"] = "true"
+    return movement
+
+
+@router.post("/admin/journals/{journal_id}/reverse", response_model=MovementResponse)
+def admin_reverse_journal(
+    journal_id: UUID,
+    req: ReversalRequest,
+    response: Response,
+    idempotency_key: str = Depends(require_idempotency_key),
+    request_id: str = Depends(get_request_id),
+    current_user: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+) -> MovementResponse:
+    """Post an audited reversal journal (Admin only)."""
+    orig_journal = db.query(Journal).filter(Journal.id == journal_id).first()
+    if not orig_journal:
+        raise NotFoundError("Original journal not found.")
+
+    if orig_journal.kind == "reversal":
+        raise ValidationError("Cannot reverse a reversal journal.")
+
+    # Check if already reversed
+    already_reversed = db.query(Journal).filter(Journal.reverses_journal_id == orig_journal.id).first()
+    if already_reversed:
+        raise ValidationError("Journal has already been reversed.")
+
+    # Fetch entries
+    entries = db.query(LedgerEntry).filter(LedgerEntry.journal_id == orig_journal.id).all()
+    if len(entries) != 2:
+        raise ValidationError("Only two-legged journals can be automatically reversed.")
+
+    # Invert debit and credit legs
+    debit_entry = next(e for e in entries if e.amount < 0)
+    credit_entry = next(e for e in entries if e.amount > 0)
+
+    movement, is_replayed = post_movement(
+        db=db,
+        user_id=current_user.id,
+        idempotency_key=idempotency_key,
+        request_id=request_id,
+        kind="reversal",
+        source_account_id=credit_entry.account_id,       # Inverted
+        destination_account_id=debit_entry.account_id,   # Inverted
+        amount=credit_entry.amount,
+        raw_payload=req.model_dump(),
+        memo=f"Reversal of {orig_journal.id}: {req.reason}",
+        reverses_journal_id=orig_journal.id,
+    )
+
+    if not is_replayed:
+        journal = db.query(Journal).filter(Journal.id == movement.journal_id).first()
+        if journal:
+            evaluate_transaction_for_flags(db, journal, credit_entry.account_id, credit_entry.amount)
 
     if is_replayed:
         response.headers["Idempotent-Replayed"] = "true"

@@ -31,7 +31,7 @@ def check_login_throttle(db: Session, email: str, ip: Optional[str]) -> None:
         .filter(
             SecurityEvent.event == "login_failed",
             SecurityEvent.created_at >= cutoff,
-            SecurityEvent.detail["email"].as_string() == email,
+            SecurityEvent.detail["email"].astext == email,
         )
         .scalar()
         or 0

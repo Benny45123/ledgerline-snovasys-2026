@@ -28,16 +28,24 @@ def get_account_statement(
     account_id: UUID,
     after_seq: Optional[int] = None,
     limit: int = 50,
+    order: str = "asc",
 ) -> StatementResponse:
     """Fetch interleaved statement items (postings + refusals) using keyset pagination."""
     limit = min(max(1, limit), 200)
+    sort_dir = "DESC" if order.lower() == "desc" else "ASC"
 
     account = db.query(Account).filter(Account.id == account_id).first()
     if not account:
         raise NotFoundError("Account not found.")
 
     # Query postings and refusals unioned via raw SQL for efficiency and sequence ordering
-    seq_filter = "AND e.account_seq > :after_seq" if after_seq is not None else ""
+    if after_seq is not None:
+        seq_op = "<" if sort_dir == "DESC" else ">"
+        seq_filter_entries = f"AND e.account_seq {seq_op} :after_seq"
+        seq_filter_refusals = f"AND r.account_seq {seq_op} :after_seq"
+    else:
+        seq_filter_entries = ""
+        seq_filter_refusals = ""
 
     stmt_sql = text(
         f"""
@@ -64,7 +72,7 @@ def get_account_statement(
             LEFT JOIN ledger_entries other_e ON other_e.journal_id = j.id AND other_e.id <> e.id
             LEFT JOIN accounts dest_acc ON other_e.account_id = dest_acc.id AND e.amount < 0
             LEFT JOIN accounts src_acc ON other_e.account_id = src_acc.id AND e.amount > 0
-            WHERE e.account_id = :account_id {seq_filter}
+            WHERE e.account_id = :account_id {seq_filter_entries}
         )
         UNION ALL
         (
@@ -87,9 +95,9 @@ def get_account_statement(
             FROM refused_attempts r
             JOIN users u ON r.initiated_by = u.id
             LEFT JOIN accounts c_acc ON r.counterparty_account_id = c_acc.id
-            WHERE r.account_id = :account_id {seq_filter}
+            WHERE r.account_id = :account_id {seq_filter_refusals}
         )
-        ORDER BY account_seq ASC
+        ORDER BY account_seq {sort_dir}
         LIMIT :limit
         """
     )

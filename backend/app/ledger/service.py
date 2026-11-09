@@ -31,10 +31,12 @@ from app.db.models import (
     LedgerEntry,
     RefusedAttempt,
     SecurityEvent,
+    User,
 )
 from app.errors import (
     AccountClosedError,
     AccountFrozenError,
+    ForbiddenError,
     IdempotencyKeyReuseError,
     InsufficientFundsError,
     InvalidDestinationError,
@@ -100,7 +102,6 @@ def post_movement(
             existing_key = (
                 db.query(IdempotencyKey)
                 .filter(IdempotencyKey.user_id == user_id, IdempotencyKey.key == idempotency_key)
-                .with_for_update()
                 .first()
             )
 
@@ -168,24 +169,51 @@ def post_movement(
         src_acc = acc_map[source_account_id]
         dest_acc = acc_map[destination_account_id]
 
-        # Phase 3: Authorize caller inside transaction post-lock
-        if src_acc.kind == "customer":
-            membership = (
-                db.query(AccountMember)
-                .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
-                .first()
-            )
-            if not membership:
-                # Log security event and return 404 (never 403) to prevent enumeration
+        # Phase 3: Authorize caller inside transaction post-lock (Invariant I6)
+        caller = db.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
+        if not caller:
+            db.rollback()
+            raise NotFoundError("User not found.")
+
+        if kind in ("adjustment", "reversal"):
+            if caller.role != "admin":
                 sec_event = SecurityEvent(
                     actor_user_id=user_id,
-                    event="unauthorized_account_access",
-                    detail={"account_id": str(src_acc.id), "action": kind},
+                    event="unauthorized_admin_action",
+                    detail={"action": kind, "caller_role": caller.role},
                     request_id=request_id,
                 )
                 db.add(sec_event)
                 db.commit()
-                raise NotFoundError("Account not found.")
+                raise ForbiddenError("Only administrators may execute balance adjustments or reversals.")
+        else:
+            # Customer-initiated money movements
+            if src_acc.kind == "customer":
+                membership = (
+                    db.query(AccountMember)
+                    .filter(AccountMember.account_id == src_acc.id, AccountMember.user_id == user_id)
+                    .first()
+                )
+                if not membership:
+                    # Log security event and return 404 (never 403) to prevent enumeration
+                    sec_event = SecurityEvent(
+                        actor_user_id=user_id,
+                        event="unauthorized_account_access",
+                        detail={"account_id": str(src_acc.id), "action": kind},
+                        request_id=request_id,
+                    )
+                    db.add(sec_event)
+                    db.commit()
+                    raise NotFoundError("Account not found.")
+
+            if kind == "deposit" and dest_acc.kind == "customer":
+                membership = (
+                    db.query(AccountMember)
+                    .filter(AccountMember.account_id == dest_acc.id, AccountMember.user_id == user_id)
+                    .first()
+                )
+                if not membership:
+                    raise NotFoundError("Account not found.")
 
         # Phase 4: Validate Account Status
         now = datetime.now(timezone.utc)
@@ -329,8 +357,10 @@ def post_movement(
         raise LockTimeoutError() from e
     except (DBAPIError, OperationalError) as e:
         db.rollback()
-        # Detect PostgreSQL lock timeout sqlstate 55P03
-        if hasattr(e.orig, "sqlstate") and e.orig.sqlstate == "55P03":
+        # Detect PostgreSQL lock timeout (55P03) or statement timeout (57014)
+        orig_err = getattr(e, "orig", None)
+        sqlstate = getattr(orig_err, "sqlstate", None)
+        if sqlstate in ("55P03", "57014") or isinstance(orig_err, (LockNotAvailable, QueryCanceled)):
             raise LockTimeoutError() from e
         raise
     except Exception:

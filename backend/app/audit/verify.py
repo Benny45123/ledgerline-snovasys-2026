@@ -10,6 +10,7 @@ If an attacker or superuser quietly modifies any row or balance, this algorithm 
 the exact account, sequence, and discrepant value.
 """
 
+from collections import defaultdict
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 from pydantic import BaseModel, ConfigDict
@@ -49,21 +50,30 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
 
     accounts = db.query(Account).order_by(Account.created_at.asc()).all()
 
+    # Bulk load all entries and refusals to eliminate N+1 round-trips
+    raw_entries = (
+        db.query(LedgerEntry)
+        .order_by(LedgerEntry.account_id, LedgerEntry.account_seq.asc())
+        .all()
+    )
+    raw_refusals = (
+        db.query(RefusedAttempt)
+        .order_by(RefusedAttempt.account_id, RefusedAttempt.account_seq.asc())
+        .all()
+    )
+    entries_by_account: Dict[UUID, List[LedgerEntry]] = defaultdict(list)
+    for e in raw_entries:
+        entries_by_account[e.account_id].append(e)
+
+    refusals_by_account: Dict[UUID, List[RefusedAttempt]] = defaultdict(list)
+    for r in raw_refusals:
+        refusals_by_account[r.account_id].append(r)
+
     # Proof 1 & 2: Hash chain verification and balance cache match per account
     for acc in accounts:
         # Fetch all postings and refusals interleaved
-        entries = (
-            db.query(LedgerEntry)
-            .filter(LedgerEntry.account_id == acc.id)
-            .order_by(LedgerEntry.account_seq.asc())
-            .all()
-        )
-        refusals = (
-            db.query(RefusedAttempt)
-            .filter(RefusedAttempt.account_id == acc.id)
-            .order_by(RefusedAttempt.account_seq.asc())
-            .all()
-        )
+        entries = entries_by_account.get(acc.id, [])
+        refusals = refusals_by_account.get(acc.id, [])
 
         all_records = []
         for e in entries:
@@ -191,7 +201,8 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
             )
 
     # Proof 4: Global Conservation equation: sum(all account balances) == 0
-    global_balance_sum = db.query(func.coalesce(func.sum(Account.balance), 0)).scalar() or 0
+    raw_global_sum = db.query(func.coalesce(func.sum(Account.balance), 0)).scalar() or 0
+    global_balance_sum = int(raw_global_sum)
     if global_balance_sum != 0:
         discrepancies.append(
             Discrepancy(
@@ -202,12 +213,13 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
             )
         )
 
-    customer_balance_sum = (
+    raw_customer_sum = (
         db.query(func.coalesce(func.sum(Account.balance), 0))
         .filter(Account.kind == "customer")
         .scalar()
         or 0
     )
+    customer_balance_sum = int(raw_customer_sum)
 
     verified = len(discrepancies) == 0
 

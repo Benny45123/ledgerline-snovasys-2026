@@ -64,12 +64,18 @@ class AdjustmentRequest(StrictLedgerBaseModel):
     account_id: UUID = Field(..., description="Account UUID to adjust against SUSPENSE")
     amount: int = Field(
         ...,
-        ne=0,
         ge=-settings.MAX_AMOUNT_PAISE,
         le=settings.MAX_AMOUNT_PAISE,
         description="Signed adjustment amount in paise (+ credit, - debit)",
     )
     reason: str = Field(..., min_length=5, max_length=255, description="Mandatory audit reason for adjustment")
+
+    @field_validator("amount")
+    @classmethod
+    def amount_must_not_be_zero(cls, v: int) -> int:
+        if v == 0:
+            raise ValueError("Adjustment amount must not be zero")
+        return v
 
     @field_validator("account_id", mode="before")
     @classmethod
@@ -80,6 +86,10 @@ class AdjustmentRequest(StrictLedgerBaseModel):
             except ValueError:
                 raise ValueError("Invalid UUID format")
         return v
+
+
+class ReversalRequest(StrictLedgerBaseModel):
+    reason: str = Field(..., min_length=5, max_length=255, description="Mandatory audit reason for reversal")
 
 
 class PostingEntryResponse(StrictLedgerBaseModel):

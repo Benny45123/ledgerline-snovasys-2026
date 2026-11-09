@@ -11,6 +11,17 @@ from the client to prevent information disclosure.
 from typing import Any, Dict, Optional
 
 
+def standardized_error_envelope(code: str, message: str, request_id: str) -> Dict[str, Any]:
+    """Create the contractual error envelope: {"error": {"code", "message", "request_id"}}."""
+    return {
+        "error": {
+            "code": code,
+            "message": message,
+            "request_id": request_id,
+        }
+    }
+
+
 class AppError(Exception):
     """Base application exception for all domain failures."""
 
