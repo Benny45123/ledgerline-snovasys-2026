@@ -34,8 +34,8 @@ app = FastAPI(
     title="LedgerLine API",
     description="Money movement with a ledger you can prove.",
     version="0.1.0",
-    docs_url="/docs" if settings.ENV != "prod" else None,
-    redoc_url="/redoc" if settings.ENV != "prod" else None,
+    docs_url="/docs" if settings.DOCS_ENABLED else None,
+    redoc_url="/redoc" if settings.DOCS_ENABLED else None,
 )
 
 # CORS Middleware with strict explicit origins

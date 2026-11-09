@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: ledgerline-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --workers 1 --proxy-headers --forwarded-allow-ips='*'
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: prod
+      - key: DATABASE_URL
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: SESSION_TTL_MINUTES
+        value: "480"
+      - key: MAX_AMOUNT_PAISE
+        value: "10000000000"
+      - key: LLM_ENABLED
+        value: "true"
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DOCS_ENABLED
+        value: "true"
