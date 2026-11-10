@@ -21,6 +21,12 @@ class LoginRequest(StrictBaseModel):
     password: str = Field(..., min_length=1, max_length=256, description="Plaintext password")
 
 
+class RegisterRequest(StrictBaseModel):
+    email: EmailStr = Field(..., description="User email address")
+    password: str = Field(..., min_length=8, max_length=256, description="Plaintext password (min 8 chars)")
+    account_name: str | None = Field(None, min_length=1, max_length=128, description="Primary account display name")
+
+
 class UserResponse(StrictBaseModel):
     id: UUID
     email: str
@@ -29,7 +35,22 @@ class UserResponse(StrictBaseModel):
     created_at: datetime
 
 
+class AccountSummaryResponse(StrictBaseModel):
+    id: UUID
+    number: str
+    name: str
+    currency: str
+    balance: int
+
+
 class LoginResponse(StrictBaseModel):
     token: str
     expires_at: datetime
     user: UserResponse
+
+
+class RegisterResponse(StrictBaseModel):
+    token: str
+    expires_at: datetime
+    user: UserResponse
+    account: AccountSummaryResponse | None = None

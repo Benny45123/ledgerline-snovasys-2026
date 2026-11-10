@@ -156,11 +156,7 @@ def post_movement(
         # Phase 2: Lock accounts deterministically (ORDER BY id)
         account_ids = sorted([source_account_id, destination_account_id])
         accounts = (
-            db.query(Account)
-            .filter(Account.id.in_(account_ids))
-            .order_by(Account.id.asc())
-            .with_for_update()
-            .all()
+            db.query(Account).filter(Account.id.in_(account_ids)).order_by(Account.id.asc()).with_for_update().all()
         )
 
         acc_map = {acc.id: acc for acc in accounts}
@@ -191,12 +187,7 @@ def post_movement(
 
             if kind == "reversal" and reverses_journal_id:
                 # Lock original journal to prevent concurrent duplicate reversals
-                orig_journal = (
-                    db.query(Journal)
-                    .filter(Journal.id == reverses_journal_id)
-                    .with_for_update()
-                    .first()
-                )
+                orig_journal = db.query(Journal).filter(Journal.id == reverses_journal_id).with_for_update().first()
                 if not orig_journal:
                     db.rollback()
                     raise NotFoundError("Original journal not found.")
@@ -204,11 +195,7 @@ def post_movement(
                     db.rollback()
                     raise ValidationError("Cannot reverse a reversal journal.")
 
-                already_reversed = (
-                    db.query(Journal)
-                    .filter(Journal.reverses_journal_id == reverses_journal_id)
-                    .first()
-                )
+                already_reversed = db.query(Journal).filter(Journal.reverses_journal_id == reverses_journal_id).first()
                 if already_reversed:
                     db.rollback()
                     raise ValidationError("Journal has already been reversed.")

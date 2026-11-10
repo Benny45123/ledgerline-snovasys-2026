@@ -628,3 +628,101 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ---
 
+## 2026-11-10 14:15 IST — Real-Time 12-Day Dynamic Net Movement Ledger Aggregation
+
+### 1. User Prompt
+
+> "The 12-day net movement chart on the dashboard currently displays illustrative sample data. I want this chart to compute dynamically from actual ledger entries for the active account. Calculate the net movement (credits minus debits) for each of the last 12 calendar days directly from confirmed ledger data. Scale bar heights proportionally relative to the peak daily absolute movement, display exact rupee tooltips on hover, and apply distinct negative tinting for debit-dominant days."
+
+### 2. What Was Implemented
+
+1. **Dynamic Ledger Aggregation (`frontend/app/app/page.tsx`)**:
+   - Replaced static placeholder arrays with a memoized `dailyMovement` computation utilizing `useMemo`.
+   - Filtered confirmed ledger postings belonging to the active account across a rolling 12-calendar-day window (`Date.now() - 12 * 86400000`).
+   - Grouped postings by ISO date (`YYYY-MM-DD`) and computed net daily deltas in paise (`net_paise = sum(credits) - sum(debits)`).
+2. **Fintech Chart Presentation**:
+   - Normalized visual bar heights dynamically based on the peak daily absolute volume (`Math.max(...dailyTotals, 1)`).
+   - Added interactive hover tooltips displaying formatted rupee values (e.g., `+₹12,450.00` or `-₹3,200.00`) and the date.
+   - Styled debit-heavy days with `.neg-net` class styles for immediate visual auditability.
+
+### 3. Mistakes, Issues Caught & Corrections
+
+- **Illustrative vs Real Data in Dashboard**: The initial prototype used an illustrative static array (`DEMO_NET_MOVEMENTS`), which failed to react when new deposits, withdrawals, or transfers were executed. Fixed by binding the visualization directly to the reactive ledger entries state (Candidate 19).
+
+---
+
+## 2026-11-10 16:30 IST — Institutional Account Onboarding & Admin Review Queue Workflow
+
+### 1. User Prompt
+
+> "Implement an institutional account onboarding workflow for newly registered users who do not yet have an account. When a new user logs in, show a clean zero-state dashboard (₹0.00 balance, zero net movement, empty ledger) along with an action to request an account. Create an append-only database table and API routes for account requests. Route these requests into the administrative review queue alongside surveillance flags. An administrator must be able to review, approve (which auto-provisions the account, creates the membership mapping, and activates the account), or reject requests with mandatory audit logging."
+
+### 2. What Was Implemented
+
+1. **Data Model & Migrations (`backend/app/db/models.py`, `0004_account_requests.py`)**:
+   - Created `AccountRequest` table with `id` (UUID), `user_id` (foreign key to `users.id`), `account_name`, `status` (`pending`, `approved`, `rejected`), `reviewed_by`, and audit timestamps.
+   - Generated Alembic revision `0004_account_requests.py` applying strict constraints and indices.
+2. **Backend API Endpoints (`backend/app/accounts/routes.py`, `backend/app/review/routes.py`)**:
+   - `POST /accounts/request`: Allows authenticated holders without accounts to submit an onboarding request with custom account labels. Automatically emits an `account_request` review flag for administrative triage.
+   - `GET /accounts/request/status`: Returns current request state for the authenticated session.
+   - `POST /review/flags/{flag_id}/decision`: Enhanced decision engine to handle `account_request` items. When approved by an administrator, it executes `create_customer_account()`, maps holder membership in `account_members`, updates request state, and logs a `SecurityEvent`.
+3. **Frontend Zero-State & Review Queue Integration (`frontend/app/app/page.tsx`)**:
+   - Built zero-state dashboard view for users with `accounts.length === 0`: displays clean zero metrics, an informational onboarding card, and a request submission modal.
+   - Updated Admin Review Queue with an **"Account Requests"** tab to review, approve, or reject institutional onboarding requests.
+4. **Automated Integration Testing (`backend/tests/integration/test_account_onboarding_approval.py`)**:
+   - Wrote end-to-end integration test verifying zero-state request submission, admin approval, automated account creation, and rejection handling.
+
+### 3. Mistakes, Issues Caught & Corrections
+
+- **Separation of Concerns vs Review Queue Unification**: Unifying onboarding approval within `/review` aligns with Invariant $I_8$ (human decision recording) and keeps administrative oversight in one place.
+
+---
+
+## 2026-11-10 17:35 IST — AI Copilot Rule 7 Alignment: Strict Role Boundary & Admin Spending Prohibition
+
+### 1. User Prompt
+
+> "During administrative testing, I noticed that when an administrator inspects a customer account and asks the AI Copilot 'Can I withdraw money?', the AI answers that administrators can initiate withdrawals via the ledger interface. This is incorrect. Under Rule 7, administrators cannot spend or withdraw customer funds, and the server strictly returns 403 Forbidden. Align the AI Copilot system prompt, caller context, intent detection, and deterministic fallbacks so the AI strictly enforces Rule 7 and informs administrators that they cannot spend or withdraw customer funds."
+
+### 2. What Was Implemented
+
+1. **System Prompt Hardening (`backend/app/review/copilot.py`)**:
+   - Added explicit `RULE 7 - STRICT` section to `SYSTEM_PROMPT`: administrators have oversight, audit, and adjustment authority against `SYS-SUSPENSE` (with mandatory reason), but are strictly forbidden from withdrawing or transferring customer funds.
+   - Injected authenticated caller role restrictions into the `AUTHENTICATED CALLER SESSION` block (`STRICTLY FORBIDDEN from withdrawing or transferring customer funds`).
+2. **Intent Detection & Deterministic Fallbacks**:
+   - Expanded `detect_intent()` in `copilot.py` to recognize withdrawal and transfer permission queries (`"can i withdraw"`, `"withdrawal permitted"`, `"transfer money"`).
+   - Updated `generate_deterministic_reply()` for `action` intents to return an explicit role-boundary refusal whenever caller is an administrator:
+     `**Answer: Administrative withdrawal or transfer is prohibited · Role boundary.** Under Rule 7, administrators cannot spend or withdraw customer funds.`
+3. **Automated Unit Testing (`backend/tests/unit/test_copilot.py`)**:
+   - Added `test_copilot_admin_withdrawal_prohibited_rule7` asserting that administrative queries regarding withdrawal permissions strictly return prohibition messages and never state that withdrawal is permitted.
+
+### 3. Mistakes, Issues Caught & Corrections
+
+- **LLM Hallucination of Admin Spending Permissions**: General-purpose LLMs assume an administrator has universal execution powers. Without explicit negative prompt constraints and session permission markers, the model hallucinated withdrawal capabilities. Corrected via strict negative system instructions, role permission tags, and deterministic intent matching (Candidate 21).
+
+---
+
+## 2026-11-10 17:50 IST — Concurrency Race Test Isolation & High-Contention Idempotency Backoff
+
+### 1. User Prompt
+
+> "Fix the concurrency race test suite and idempotency integration tests. Under parallel execution on the shared test database, `test_no_overdraft_race.py` failed with an assertion mismatch on journal counts due to leftover rows from previous test runs. Furthermore, high-concurrency idempotency replay tests raised `LockTimeoutError` (503 Retry-After) without client retries. Isolate the race test assertions by unique run IDs and implement client retry backoff on lock timeouts."
+
+### 2. What Was Implemented
+
+1. **Test Isolation by Run ID (`backend/tests/concurrency/test_no_overdraft_race.py`)**:
+   - Generated unique run identifiers (`run_id = uuid.uuid4().hex[:8]`) per test invocation.
+   - Scoped idempotency keys to `race-withdraw-{run_id}-{i}` and updated the journal count assertion to filter by `like(f"race-withdraw-{run_id}-%")`.
+   - Verified that exactly 3 withdrawals succeed, 17 refuse cleanly, and final balance is exactly ₹10.00 with zero state leakage.
+2. **Client Backoff on Concurrency Key Contention (`backend/tests/integration/test_idempotency.py`)**:
+   - Wrapped concurrent replay requests in a retry loop with exponential backoff when receiving `503 Service Unavailable` (`LockTimeoutError`), mirroring real-world client retry behavior.
+3. **Test Suite Verification**:
+   - Ran `test_no_overdraft_race.py` and `test_idempotency.py` to confirm 100% pass rate under 20-thread concurrency.
+
+### 3. Mistakes, Issues Caught & Corrections
+
+- **Global vs Run-Scoped Test Assertions**: Querying journals with a generic prefix `like("race-withdraw-%")` matched records from earlier runs on the persistent database, causing an assertion failure (`assert 21 == 3`). Resolved by strictly scoping the query to the unique `run_id`.
+
+---
+
+

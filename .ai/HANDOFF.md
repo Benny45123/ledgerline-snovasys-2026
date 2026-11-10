@@ -1,6 +1,97 @@
 # Agent Handoff Notes
 
-### Latest: 2026-11-09 13:00 IST — Statement Keyset Pagination, Account Sync, & Net Movement Chart
+### Latest: 2026-11-10 21:30 IST — Institutional Account Request & Admin Approval Workflow
+- **Refinement Delivered**:
+  - Implemented the end-to-end "Account Request -> Admin Approval" onboarding pipeline across backend and frontend:
+    - `POST /auth/register`: Users register without unvetted bank accounts. An `AccountRequest` row (`status="pending"`) and an `account_request` review flag (`severity="medium"`, `status="open"`) are recorded, returning `account=None`.
+    - `GET /accounts/requests/mine`: Returns the authenticated user's pending and historical vault requests.
+    - `POST /accounts/requests`: Allows authenticated users with zero accounts to submit a request for an institutional vault.
+    - `POST /review/flags/{flag_id}/decision`: Enhanced admin decision handler to atomically approve or dismiss account requests. Upon admin approval, `create_customer_account` provisions a zero-balance double-entry customer vault bound to the user in PostgreSQL, updates `AccountRequest` status to `approved`, appends a `ReviewDecision`, and emits audit `SecurityEvent` log.
+    - Zero-account dashboard state: Newly registered users with 0 active accounts see default zeros (`₹0.00` balance, `+₹0.00` inflow, `−₹0.00` outflow, `0` refusals) and an institutional 3-step Fintech Onboarding Status Stepper card (`🟡 APPLICATION UNDER REVIEW`).
+    - Statement tab: Renders clean default zero state (`Account: Pending Activation · 0 entries recorded`).
+    - Admin Review Queue: Retained the authentic, unbloated layout ("Suggestions only. A person decides, and the decision is recorded. No flags waiting for review.") with Approve / Dismiss controls that refresh active accounts upon decision.
+  - Automated integration test `backend/tests/integration/test_account_onboarding_approval.py` verified and passing (2/2 tests green).
+- **Files Touched**:
+  - `backend/app/db/models.py`, `backend/migrations/versions/0004_account_requests.py`: Added `AccountRequest` table and constraints.
+  - `backend/app/auth/routes.py`, `backend/app/accounts/routes.py`, `backend/app/review/routes.py`: Onboarding request & decision logic.
+  - `backend/app/accounts/schemas.py`, `backend/app/auth/schemas.py`: Schemas for requests and registration.
+  - `backend/tests/integration/test_account_onboarding_approval.py`: Full end-to-end integration tests.
+  - `frontend/lib/api.ts`, `frontend/app/app/page.tsx`: Frontend zero-state KPIs, stepper card, and request management.
+  - `docs/API.md`, `.ai/STATUS.md`, `.ai/HANDOFF.md`: Updated API contracts and progress tracking.
+
+### Previous: 2026-11-10 21:05 IST — Clean Admin Operations Layout Aligned with Reference Prototype
+- **Refinement Delivered**:
+  - Removed the cluttered `User Directory & Role Access (RBAC)` table from the Admin Operations tab. In test/demo environments, accounts with 100+ race test accounts had dumped huge unformatted walls of account numbers, breaking the UI layout.
+  - Restored the exact, clean 2-column layout from `frontend/LedgerLine — app.html` line 182:
+    - Side-by-side cards in `.g2`: `Accounts` (with live freeze/unfreeze switches) and `Adjustment` (posting against SYS-SUSPENSE with mandatory reason).
+    - Directly below: focused `Review queue` card ("Suggestions only. A person decides, and the decision is recorded. No flags waiting for review.").
+  - Pruned unused `adminUsers` state, hooks, and event handlers from `frontend/app/app/page.tsx` and removed unused `AdminUser` import.
+- **Files Touched**:
+  - `frontend/app/app/page.tsx`: Removed user directory form and table; restored clean operations layout.
+  - `.ai/STATUS.md`, `.ai/HANDOFF.md`: Updated progress tracking.
+
+### Previous: 2026-11-10 20:45 IST — Streamlined Fintech Auth Sliding Transition
+- **Refinement Delivered**:
+  - Removed redundant top segmented pill bar (`Sign in | Create account`); switching is now driven exclusively by clean, natural bottom switch prompts ("Don't have an account? Create account" and "Already have an account? Sign in"), matching standard single-page auth UX (Stripe, Linear).
+  - Removed cluttered bottom footer note (`opaque bearer session · idempotent writes v1.0`), restoring clean vertical centering.
+  - Retained the smooth horizontal sliding carousel (`.auth-viewport` & `.auth-track`) with 350ms institutional-grade cubic-bezier (`cubic-bezier(0.25, 1, 0.5, 1)`) so clicking the switch links glides seamlessly between Sign In and Create Account without vertical jumps.
+  - Isolated demo presets into a clean `.auth-demo-box` inside the Sign In panel with clear captioning.
+  - Preserved shared input states (`authEmail`, `authPassword`) across the transition.
+- **Files Touched**:
+  - `frontend/app/app/page.tsx`: Removed `.auth-mode-seg` and footer note; streamlined sliding track controls.
+  - `frontend/app/app/app.css`: Pruned unused `.auth-mode-seg` rules.
+
+### Previous: 2026-11-10 20:30 IST — BalanceVault Full Implementation & Hardening
+- **Completed Deliverables**:
+  - **User Registration & Atomic Account Provisioning**: Added `POST /auth/register` in `backend/app/auth/routes.py` with Argon2id password hashing, atomic customer account creation via `create_customer_account`, `user_registered` security event logging, and instant session issuance.
+  - **Admin User Management & RBAC**: Implemented `GET /admin/users`, `POST /admin/users`, and `POST /admin/users/{user_id}/status` in `backend/app/accounts/routes.py` with self-deactivation protection and immediate session revocation upon deactivation.
+  - **Distributed Redis Rate Limiting with Fallback**: Implemented sliding-window algorithm using Redis sorted sets with thread-safe in-memory fallback in `backend/app/rate_limit.py`. Attached route dependencies to `/auth/login`, `/auth/register`, and money movements (`deposit`, `withdraw`, `transfer`).
+  - **First-Admin Bootstrap Script**: Created `scripts/bootstrap_admin.py` with zero-admin guard, Argon2id encryption, CLI and env configuration, and Neon/Supabase cloud PostgreSQL compatibility.
+  - **Enriched Health & Readiness Probes**: Updated `/ready` in `backend/app/main.py` to verify both PostgreSQL and Redis connectivity.
+  - **Frontend UI & Onboarding Integration**: Added `Sign in` | `Create account` mode toggle on the Auth screen with self-service registration and auto-login, and added a dedicated "User Directory & Role Access (RBAC)" card in the Admin tab with live status toggling, account balances, and user provisioning.
+  - **Branding Alignment**: Aligned public UI branding to `BalanceVault (formerly LedgerLine)` while keeping database role identifiers (`ledgerline_app`, `ledgerline_owner`) strictly intact.
+- **Files Touched**:
+  - `backend/app/auth/routes.py`, `backend/app/accounts/routes.py`, `backend/app/accounts/schemas.py`, `backend/app/rate_limit.py`, `backend/app/main.py`.
+  - `scripts/bootstrap_admin.py`.
+  - `frontend/lib/api.ts`, `frontend/app/app/page.tsx`, `frontend/app/page.tsx`, `frontend/app/layout.tsx`.
+  - `README.md`, `docs/WRITEUP.md`, `.ai/STATUS.md`, `.ai/HANDOFF.md`.
+
+### Previous: 2026-11-10 19:55 IST — Copilot UI Refinements Aligned with LedgerLine Prototype
+- **Refinement Delivered**:
+  - Removed repetitive 4-button `.proof-nav-bar` (`📊 Dashboard`, `📑 Statement`, `🛡️ Audit Verify`, `⚡ Move Money`) and tool tag chips (`forecast · read-only`) from assistant messages.
+  - Removed "Clickable Proofs" header and "Jump ↗" text badges that cluttered the search results card.
+  - Re-aligned `.ac` and `.sr` with the exact prototype in `frontend/LedgerLine — app.html`:
+    - Standard `<a href="#statement" class="sr">` items inside `<div class="ac">`.
+    - Generous vertical height (`min-height: 52px; padding: 13px 16px; gap: 14px;`) with clean typography.
+    - Left side: bold entry title (`#2 · Transfer`) with subtle inline chip for refusals (`Refused · insufficient_funds`) and secondary memo/balance (`Balance after ₹600.00`).
+    - Right side: cleanly aligned mono amount with sign and color coding (`+₹1,000.00` in emerald, `−₹400.00` in red).
+    - Smooth click handler navigating to statement item with account selection, filter reset, smooth scroll, and glowing emerald pulse.
+  - Replaced duplicate bulleted search text in `copilot.py` with concise prototype response: `Found **X matching entries**, newest first.`
+- **Files Touched**:
+  - `frontend/app/app/page.tsx`: Cleaned up Copilot card rendering to match `frontend/LedgerLine — app.html`.
+  - `frontend/app/app/app.css`: Updated `.sr` styling for optimal height and typography; pruned unused proof classes.
+  - `backend/app/review/copilot.py`: Made search reply text concise without duplicate markdown bullet rows.
+  - `backend/tests/unit/test_copilot.py`: Added unit test `test_copilot_search_response_concise_format`.
+
+### Previous: 2026-11-10 19:15 IST — BalanceVault Requirements Alignment & Documentation Overhaul
+- **Context & Organizer Clarifications**:
+  - Organizers officially confirmed: *BalanceVault is the renamed LedgerLine*. All core financial invariants ($I_1$ to $I_8$, double-entry, append-only, concurrency locks, idempotency) remain strictly applicable.
+  - Added mandatory items: Account management & user onboarding, RBAC, Redis rate limiting, First-admin bootstrap script, Database roles & deployment health checks.
+  - Directive: *Extend existing LedgerLine implementation, do not start from scratch.*
+- **Files Touched**:
+  - `docs/Problem_Statement.md`: Appended official addendum and clarifications from the organizers.
+  - `docs/ARCHITECTURE.md`: Added Section 9 documenting User Onboarding, Redis Rate Limiting architecture, First-Admin Bootstrap (Neon SQLSTATE 42501 analysis), and Health/Readiness probes.
+  - `docs/API.md`: Documented `POST /auth/register`, `GET /admin/users`, `POST /admin/users`, `POST /admin/users/{id}/status`, `GET /health`, `GET /ready`, and rate limiting headers.
+  - `THREATS.md`: Added threat vectors P11 to P14 (registration spam, Redis outage fallback, bootstrap hijacking, cloud PostgreSQL role permission errors).
+  - `docs/UNFINISHED.md`: Updated known scope and aligned in-progress items with portal submission checklist.
+  - `.ai/STATUS.md`: Updated active tasks and detailed execution plan.
+- **Next Actions**:
+  - Implement `POST /auth/register` and admin user directory endpoints in FastAPI backend.
+  - Create Redis rate-limiting provider with resilient fallback.
+  - Create dedicated `scripts/bootstrap_admin.py` handling restricted DB role environments.
+  - Update frontend with registration modal/tab and admin user management panel.
+
+### Previous: 2026-11-09 13:00 IST — Statement Keyset Pagination, Account Sync, & Net Movement Chart
 - **Files Touched**:
   - `backend/app/ledger/queries.py`: Fixed `psycopg.errors.UndefinedTable: missing FROM-clause entry for table "e"` by using `seq_filter_entries` (`e.account_seq`) for entries and `seq_filter_refusals` (`r.account_seq`) for refusals in the keyset-paginated `UNION ALL` query.
   - `frontend/app/app/page.tsx`: Fixed stale closure in `refreshStatements()` to ensure atomic UI updates across balance, statement, recent activity, and KPI cards when switching accounts; added real ledger transaction aggregation for 12-day net movement chart; added explicit source account display with live balance in Move Money modal.

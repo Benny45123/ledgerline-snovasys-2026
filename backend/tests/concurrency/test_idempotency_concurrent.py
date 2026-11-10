@@ -76,17 +76,9 @@ def test_concurrent_idempotency_contention(db: Session, test_users: dict[str, Us
     assert len(journal_ids) == 1
 
     # Verify exactly 1 deposit journal was created for this key
-    deposit_journals = (
-        db.query(Journal)
-        .filter(Journal.idempotency_key == contention_key)
-        .all()
-    )
+    deposit_journals = db.query(Journal).filter(Journal.idempotency_key == contention_key).all()
     assert len(deposit_journals) == 1
 
     # Verify exactly 19 replay audit records were captured
-    replay_records = (
-        db.query(IdempotencyReplay)
-        .filter(IdempotencyReplay.key == contention_key)
-        .all()
-    )
+    replay_records = db.query(IdempotencyReplay).filter(IdempotencyReplay.key == contention_key).all()
     assert len(replay_records) == 19

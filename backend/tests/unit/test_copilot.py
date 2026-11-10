@@ -323,3 +323,44 @@ def test_dynamic_risk_scoring_and_reconciliation_scoping(db: Session, test_users
     )
     assert "reconciliation" in res_reconcil.data_payload
     assert res_reconcil.data_payload["reconciliation"]["conservation_invariant"] == "HELD"
+
+
+def test_copilot_search_response_concise_format(db: Session, test_users: dict[str, Any]):
+    """Verify that search queries return concise reply text and rich search_results for card rendering."""
+    holder = test_users["holder1"]
+    acc = create_customer_account(db, "Search Test Account", holder.id)
+
+    res = query_copilot(
+        db=db,
+        user=holder,
+        message="Show my previous transactions",
+        context_account_id=acc.id,
+    )
+    assert res.intent == "search"
+    assert "search_results" in res.data_payload
+    assert isinstance(res.data_payload["search_results"], list)
+    assert any(
+        phrase in res.reply.lower()
+        for phrase in ("found", "no ledger entries", "no transaction", "pristine", "zero movement")
+    )
+
+
+def test_copilot_admin_withdrawal_prohibited_rule7(db: Session, test_users: dict[str, Any]):
+    """Verify that Copilot enforces Rule 7: Admin cannot withdraw or spend customer funds."""
+    admin = test_users["admin"]
+    holder = test_users["holder1"]
+    acc = create_customer_account(db, "Customer Spending Account", holder.id)
+
+    res = query_copilot(
+        db=db,
+        user=admin,
+        message="Can I withdraw money from this account?",
+        context_account_id=acc.id,
+    )
+    reply_lower = res.reply.lower()
+    assert any(
+        term in reply_lower
+        for term in ("prohibited", "cannot", "denied", "restriction", "holder", "403", "forbidden", "rule 7", "suspense")
+    )
+    assert "yes, withdrawal is permitted" not in reply_lower
+

@@ -8,7 +8,6 @@ before the service can bind or accept traffic. Default monetary caps prevent
 integer overflow and precision loss.
 """
 
-
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -60,6 +59,15 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str | None = Field(default=None, description="Google Gemini API key")
     GEMINI_MODEL: str = Field(default="gemini-2.5-flash", description="Google Gemini model name")
     DOCS_ENABLED: bool = Field(default=True, description="Enable /docs and /redoc OpenAPI documentation")
+
+    REDIS_URL: str = Field(
+        default="redis://localhost:6379/0",
+        description="Redis connection URL for distributed rate limiting",
+    )
+    REDIS_ENABLED: bool = Field(
+        default=True,
+        description="Enable Redis for rate limiting (falls back to memory if unreachable)",
+    )
 
     @field_validator("ENV")
     @classmethod

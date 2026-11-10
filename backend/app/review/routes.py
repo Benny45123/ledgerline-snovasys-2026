@@ -16,10 +16,12 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.accounts.service import create_customer_account
 from app.db.engine import get_db
-from app.db.models import Account, AccountMember, ReviewDecision, ReviewFlag, User
+from app.db.models import Account, AccountMember, AccountRequest, ReviewDecision, ReviewFlag, SecurityEvent, User
 from app.deps import get_current_user, require_role
 from app.errors import NotFoundError
+from app.logging import logger
 from app.review.analytics import compute_fraud_risk_score, forecast_cash_flow, get_account_metrics
 from app.review.copilot import query_copilot
 from app.review.schemas import ChatRequest, ChatResponse
@@ -41,16 +43,13 @@ def list_flags(
 ) -> list[dict[str, Any]]:
     """List surveillance flags with dynamically derived status (Admin & Auditor read-only)."""
     # Subquery to identify the latest decision per flag
-    latest_decisions = (
-        db.query(
-            ReviewDecision.flag_id,
-            ReviewDecision.decision,
-            func.row_number()
-            .over(partition_by=ReviewDecision.flag_id, order_by=ReviewDecision.created_at.desc())
-            .label("rn"),
-        )
-        .subquery()
-    )
+    latest_decisions = db.query(
+        ReviewDecision.flag_id,
+        ReviewDecision.decision,
+        func.row_number()
+        .over(partition_by=ReviewDecision.flag_id, order_by=ReviewDecision.created_at.desc())
+        .label("rn"),
+    ).subquery()
 
     rows = (
         db.query(
@@ -121,6 +120,59 @@ def record_decision(
         if req.decision in ("approve", "approved")
         else ("dismiss" if req.decision in ("dismiss", "dismissed") else "escalate")
     )
+
+    # If this review flag corresponds to a new account request, process the onboarding decision
+    if flag.rule_id == "account_request" and flag.evidence:
+        req_id_str = flag.evidence.get("request_id")
+        if req_id_str:
+            try:
+                parsed_req_id = UUID(req_id_str)
+                acc_req = db.query(AccountRequest).filter(AccountRequest.id == parsed_req_id).first()
+                if acc_req and acc_req.status == "pending":
+                    if canonical_decision == "approve":
+                        new_acc = create_customer_account(
+                            db=db,
+                            name=acc_req.account_name,
+                            owner_user_id=acc_req.user_id,
+                            overdraft_limit=0,
+                        )
+                        acc_req.status = "approved"
+                        acc_req.account_id = new_acc.id
+                        acc_req.reviewed_by = current_user.id
+                        acc_req.reviewed_at = func.now()
+                        db.add(
+                            SecurityEvent(
+                                actor_user_id=current_user.id,
+                                event="account_request_approved",
+                                detail={
+                                    "request_id": str(acc_req.id),
+                                    "account_id": str(new_acc.id),
+                                    "account_number": new_acc.number,
+                                    "reason": req.reason,
+                                },
+                            )
+                        )
+                    elif canonical_decision == "dismiss":
+                        acc_req.status = "rejected"
+                        acc_req.rejection_reason = req.reason
+                        acc_req.reviewed_by = current_user.id
+                        acc_req.reviewed_at = func.now()
+                        db.add(
+                            SecurityEvent(
+                                actor_user_id=current_user.id,
+                                event="account_request_rejected",
+                                detail={
+                                    "request_id": str(acc_req.id),
+                                    "reason": req.reason,
+                                },
+                            )
+                        )
+            except Exception as exc:
+                logger.warning(
+                    "account_request_review_processing_failed",
+                    flag_id=flag.id,
+                    error=str(exc),
+                )
 
     decision_record = ReviewDecision(
         flag_id=flag.id,
@@ -198,4 +250,3 @@ def get_account_insights(
         },
         "forecast": forecast,
     }
-

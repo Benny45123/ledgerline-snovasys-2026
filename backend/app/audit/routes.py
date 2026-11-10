@@ -36,10 +36,7 @@ def list_replays(
 ) -> list[dict[str, Any]]:
     """Retrieve recorded idempotent replay logs (proof of deduplication)."""
     replays = (
-        db.query(IdempotencyReplay)
-        .order_by(IdempotencyReplay.created_at.desc())
-        .limit(min(max(1, limit), 200))
-        .all()
+        db.query(IdempotencyReplay).order_by(IdempotencyReplay.created_at.desc()).limit(min(max(1, limit), 200)).all()
     )
     return [
         {
@@ -61,12 +58,7 @@ def list_security_events(
     db: Session = Depends(get_db),
 ) -> list[dict[str, Any]]:
     """Retrieve logged security events (IDOR, failed logins, admin freezes)."""
-    events = (
-        db.query(SecurityEvent)
-        .order_by(SecurityEvent.created_at.desc())
-        .limit(min(max(1, limit), 200))
-        .all()
-    )
+    events = db.query(SecurityEvent).order_by(SecurityEvent.created_at.desc()).limit(min(max(1, limit), 200)).all()
     return [
         {
             "id": e.id,

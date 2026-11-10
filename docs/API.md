@@ -32,6 +32,54 @@
   }
   ```
 
+### `POST /auth/register`
+- **Allowed Callers**: Anyone (Unauthenticated).
+- **Effect on Money**: None (Provisions user with role `holder` and creates primary account with initial balance `0`).
+- **Idempotency**: Handled via unique email constraints and atomic transaction.
+- **Rate Limiting**: Enforced via Redis sliding window (5 registrations/hour per IP).
+- **Request Body**:
+  ```json
+  {
+    "email": "newuser@example.com",
+    "password": "SecurePassword123!",
+    "account_name": "Primary Operating"
+  }
+  ```
+- **Response (201 Created)**:
+  ```json
+  {
+    "token": "7f8e9d...",
+    "user": {
+      "id": "c1a2b3c4-...",
+      "email": "newuser@example.com",
+      "role": "holder",
+      "is_active": true
+    },
+    "account": {
+      "id": "f5e4d3c2-...",
+      "number": "ACC-984210",
+      "name": "Primary Operating",
+      "currency": "INR",
+      "balance": 0
+    }
+  }
+  ```
+
+### `GET /auth/me`
+- **Allowed Callers**: Authenticated (`holder`, `admin`, `auditor`).
+- **Effect on Money**: None.
+- **Header**: `Authorization: Bearer <token>`
+- **Response (200 OK)**:
+  ```json
+  {
+    "id": "e4f8a32b-...",
+    "email": "holder1@ledgerline.test",
+    "role": "holder",
+    "is_active": true,
+    "created_at": "2026-11-06T12:00:00Z"
+  }
+  ```
+
 ### `POST /auth/logout`
 - **Allowed Callers**: Authenticated (`holder`, `admin`, `auditor`).
 - **Effect on Money**: None.
@@ -104,6 +152,40 @@
     "next_after": null
   }
   ```
+
+### `GET /accounts/requests/mine`
+- **Allowed Callers**: Authenticated (`holder`, `admin`, `auditor`).
+- **Effect on Money**: None (Read-only).
+- **Response (200 OK)**:
+  ```json
+  {
+    "requests": [
+      {
+        "id": "...",
+        "user_id": "...",
+        "account_name": "Treasury Reserve Vault",
+        "currency": "INR",
+        "status": "pending",
+        "account_id": null,
+        "rejection_reason": null,
+        "created_at": "2026-11-10T12:00:00Z",
+        "decided_at": null
+      }
+    ]
+  }
+  ```
+
+### `POST /accounts/requests`
+- **Allowed Callers**: Authenticated `holder` with 0 active accounts.
+- **Effect on Money**: None.
+- **Request Body**:
+  ```json
+  {
+    "account_name": "Operating Checking"
+  }
+  ```
+- **Response (201 Created)**: AccountRequestItem object.
+
 
 ---
 
@@ -254,3 +336,113 @@ All four money movement endpoints below invoke `app/ledger/service.py::post_move
     "reason": "Verified legitimate invoice payment with counterparty"
   }
   ```
+
+---
+
+## 6. Admin User Management & Onboarding
+
+### `GET /admin/users`
+- **Allowed Callers**: `admin` only.
+- **Effect on Money**: None (Read-only user directory).
+- **Response (200 OK)**:
+  ```json
+  [
+    {
+      "id": "e4f8a32b-...",
+      "email": "holder1@ledgerline.internal",
+      "role": "holder",
+      "is_active": true,
+      "created_at": "2026-11-06T12:00:00Z",
+      "accounts": [
+        {
+          "id": "a1b2c3d4-...",
+          "number": "ACC-100001",
+          "name": "holder1 Operating",
+          "balance": 10000000,
+          "status": "active"
+        }
+      ]
+    }
+  ]
+  ```
+
+### `POST /admin/users`
+- **Allowed Callers**: `admin` only.
+- **Effect on Money**: None (Provisions user with designated role).
+- **Request Body**:
+  ```json
+  {
+    "email": "auditor2@ledgerline.internal",
+    "password": "TemporaryPassword123!",
+    "role": "auditor"
+  }
+  ```
+- **Response (201 Created)**: User details object.
+
+### `POST /admin/users/{user_id}/status`
+- **Allowed Callers**: `admin` only.
+- **Effect on Money**: None (Activates or suspends user authentication).
+- **Request Body**:
+  ```json
+  {
+    "is_active": false
+  }
+  ```
+- **Response (200 OK)**: Updated user details.
+
+---
+
+## 7. Operational Health & Readiness Probes
+
+### `GET /health`
+- **Allowed Callers**: Anyone (Unauthenticated).
+- **Effect on Money**: None (Process liveness probe).
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "ok"
+  }
+  ```
+
+### `GET /ready`
+- **Allowed Callers**: Anyone (Unauthenticated).
+- **Effect on Money**: None (Dependency readiness probe: PostgreSQL + Redis).
+- **Response (200 OK)**:
+  ```json
+  {
+    "status": "ready",
+    "database": "connected",
+    "redis": "connected"
+  }
+  ```
+- **Response (503 Service Unavailable)**:
+  ```json
+  {
+    "status": "unavailable",
+    "database": "disconnected"
+  }
+  ```
+
+---
+
+## 8. Rate Limiting Headers & Error Contract
+
+All public and transactional routes return standard rate-limiting metadata headers:
+- `X-RateLimit-Limit`: Maximum permitted requests in current window.
+- `X-RateLimit-Remaining`: Remaining request quota.
+- `X-RateLimit-Reset`: Unix timestamp when quota resets.
+
+When rate limits are exceeded, the API returns:
+- **HTTP Status**: `429 Too Many Requests`
+- **Header**: `Retry-After: <seconds>`
+- **Body Envelope**:
+  ```json
+  {
+    "error": {
+      "code": "rate_limited",
+      "message": "Too many requests. Please retry in 30 seconds.",
+      "request_id": "req-98f2b1a4"
+    }
+  }
+  ```
+

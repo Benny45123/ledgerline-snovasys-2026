@@ -73,6 +73,10 @@
 | P8  | Vulnerable dependencies                                  | Package audit and pinned versions in `uv`                                | Clean audit                                              | CLOSED              |
 | P9  | Free-tier cold start causes timeouts during judging      | Keep-alive ping; clients retry with same key                             | Manual / Architectural document                          | ACCEPTED (document) |
 | P10 | Rate limiting per process is weaker with several workers | DB-backed counters for login; note single-worker deploy                  | `app/auth/throttle.py` (queried from `security_events`)  | CLOSED              |
+| P11 | Registration & Onboarding spam / Sybil flooding          | Redis sliding-window rate limiting per IP (5/hr) + DB email unique index | `tests/security/test_registration_throttle.py`           | CLOSED              |
+| P12 | Redis outage or network partition causes DoS             | Graceful fallback to in-memory/DB throttle without halting money paths   | `tests/unit/test_redis_fallback.py`                      | CLOSED              |
+| P13 | First-admin bootstrap script hijacked or re-executed     | Zero-admin count check + optional `BOOTSTRAP_TOKEN` secret gate          | `tests/unit/test_bootstrap_admin.py`                     | CLOSED              |
+| P14 | Cloud Postgres role permission rejection (SQLSTATE 42501)| App bootstrap decoupled from DDL `ALTER ROLE`; restricted DB roles       | Architectural boundary & `scripts/bootstrap_admin.py`    | CLOSED              |
 
 ## F. AI review feature
 

@@ -195,3 +195,18 @@ This log records real defects and issues identified during review, structured pe
 - **How it was found**: Human code review of staged files.
 - **Fix**: Removed `docs/DEPLOYMENT_GUIDE.md` and amended the commit (`94e4e99`) to omit it completely from git history.
 - **Category**: documentation
+
+### Candidate 21: AI Copilot Hallucinated Admin Withdrawal Permission Contradicting Server RBAC (Rule 7)
+- **Agent/tool**: Antigravity
+- **Prompt (human's request, summarised)**: "the functionality is good no transfer access or spend access for admin but ai is telling wrong output"
+- **What I produced**: In `backend/app/review/copilot.py`, the AI system prompt acknowledged that ADMIN callers have global oversight across customer accounts, but failed to specify Rule 7 ("Admin cannot spend holders' money"). When an administrator inspected a customer account and asked whether withdrawal was permitted, the LLM hallucinated: *"As an ADMIN, you may initiate withdrawals via the standard ledger interface"*, directly contradicting the server API which strictly enforces `require_role("holder")` on `/withdraw` and returns `403 Forbidden: Access denied. Requires one of roles: holder`.
+- **What was wrong**: The LLM output misrepresented server authorization rules, giving the administrator the false impression that they could withdraw customer funds directly, causing user confusion when the server cleanly blocked it with 403.
+- **How it was found**: Human testing of admin capabilities and live AI chat responses against customer accounts.
+- **Fix**:
+  1. Updated `SYSTEM_PROMPT` in `backend/app/review/copilot.py` to strictly enforce Rule 7: Administrators cannot spend, withdraw, or transfer customer funds; administrative actions on balances are strictly limited to adjustments against SYS-SUSPENSE with a mandatory reason, or account freeze.
+  2. Injected explicit role spending boundaries into `AUTHENTICATED CALLER SESSION` in `query_copilot`.
+  3. Expanded action intent detection in `detect_intent` to catch withdrawal permission queries.
+  4. Updated `generate_deterministic_reply` for `intent == "action"` to explicitly state administrative spending prohibition (Rule 7) and 403 server boundary.
+  5. Added unit test `test_copilot_admin_withdrawal_prohibited_rule7` in `backend/tests/unit/test_copilot.py`.
+- **Category**: authorisation / AI feature
+

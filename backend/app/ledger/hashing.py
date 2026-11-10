@@ -39,9 +39,7 @@ def compute_entry_hash(
     ts_utc = created_at.astimezone(UTC)
     ts_str = ts_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-    canonical_str = (
-        f"{account_id!s}|{account_seq}|{journal_id!s}|{amount}|{balance_after}|{ts_str}"
-    )
+    canonical_str = f"{account_id!s}|{account_seq}|{journal_id!s}|{amount}|{balance_after}|{ts_str}"
     hasher = hashlib.sha256()
     hasher.update(prev_hash)
     hasher.update(canonical_str.encode("utf-8"))
@@ -61,9 +59,7 @@ def compute_refusal_hash(
     ts_utc = created_at.astimezone(UTC)
     ts_str = ts_utc.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
-    canonical_str = (
-        f"{account_id!s}|{account_seq}|{amount}|{balance_at}|{reason_code}|{ts_str}"
-    )
+    canonical_str = f"{account_id!s}|{account_seq}|{amount}|{balance_at}|{reason_code}|{ts_str}"
     hasher = hashlib.sha256()
     hasher.update(prev_hash)
     hasher.update(canonical_str.encode("utf-8"))

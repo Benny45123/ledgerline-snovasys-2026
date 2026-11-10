@@ -2,9 +2,9 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LedgerLine — money you can prove",
+  title: "BalanceVault — money you can prove",
   description:
-    "Move money between accounts without ever creating it, losing it, or paying twice, and keep a record no one can quietly edit.",
+    "Move money between accounts without ever creating it, losing it, or paying twice, and keep a record no one can quietly edit. Core double-entry provable ledger engine.",
   icons: {
     icon: "/favicon.ico",
   },

@@ -53,16 +53,8 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
     accounts = db.query(Account).order_by(Account.created_at.asc()).all()
 
     # Bulk load all entries and refusals to eliminate N+1 round-trips
-    raw_entries = (
-        db.query(LedgerEntry)
-        .order_by(LedgerEntry.account_id, LedgerEntry.account_seq.asc())
-        .all()
-    )
-    raw_refusals = (
-        db.query(RefusedAttempt)
-        .order_by(RefusedAttempt.account_id, RefusedAttempt.account_seq.asc())
-        .all()
-    )
+    raw_entries = db.query(LedgerEntry).order_by(LedgerEntry.account_id, LedgerEntry.account_seq.asc()).all()
+    raw_refusals = db.query(RefusedAttempt).order_by(RefusedAttempt.account_id, RefusedAttempt.account_seq.asc()).all()
     entries_by_account: dict[UUID, list[LedgerEntry]] = defaultdict(list)
     for e in raw_entries:
         entries_by_account[e.account_id].append(e)
@@ -216,10 +208,7 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
         )
 
     raw_customer_sum = (
-        db.query(func.coalesce(func.sum(Account.balance), 0))
-        .filter(Account.kind == "customer")
-        .scalar()
-        or 0
+        db.query(func.coalesce(func.sum(Account.balance), 0)).filter(Account.kind == "customer").scalar() or 0
     )
     customer_balance_sum = int(raw_customer_sum)
 

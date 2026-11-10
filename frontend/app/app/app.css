@@ -630,6 +630,159 @@
   margin-bottom: 22px;
 }
 
+/* ==============================================================================
+   Fintech Sliding Auth Carousel & Viewport
+   ============================================================================== */
+
+.app-root .auth-title {
+  animation: auth-fade 0.28s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+
+.app-root .auth-sub {
+  animation: auth-fade 0.28s cubic-bezier(0.25, 1, 0.5, 1) both;
+}
+
+@keyframes auth-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.app-root .auth-viewport {
+  overflow: hidden;
+  width: 100%;
+  position: relative;
+}
+
+.app-root .auth-track {
+  display: flex;
+  width: 200%;
+  transition: transform 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.app-root .auth-track.slide-login {
+  transform: translateX(0%);
+}
+
+.app-root .auth-track.slide-register {
+  transform: translateX(-50%);
+}
+
+.app-root .auth-panel {
+  width: 50%;
+  flex-shrink: 0;
+  box-sizing: border-box;
+  padding-right: 14px;
+  transition: opacity 0.28s ease, transform 0.28s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+.app-root .auth-track.slide-login .auth-panel:first-child {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.app-root .auth-track.slide-login .auth-panel:last-child {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
+}
+
+.app-root .auth-track.slide-register .auth-panel:first-child {
+  opacity: 0;
+  transform: scale(0.97);
+  pointer-events: none;
+}
+
+.app-root .auth-track.slide-register .auth-panel:last-child {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.app-root .auth-demo-box {
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 14px;
+  margin-bottom: 20px;
+}
+
+.app-root .auth-demo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.app-root .demo-chip {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--acc);
+  background: color-mix(in srgb, var(--acc) 14%, transparent);
+  padding: 3px 8px;
+  border-radius: 99px;
+}
+
+.app-root .auth-demo-header small {
+  color: var(--mut);
+  font-size: 12px;
+}
+
+.app-root .auth-demo-box .seg {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  padding: 3px;
+  margin-bottom: 0;
+}
+
+.app-root .auth-demo-box .seg button {
+  padding: 7px 10px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.app-root .auth-switch-prompt {
+  margin-top: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--mut);
+}
+
+.app-root .auth-switch-btn {
+  background: none;
+  border: none;
+  color: var(--acc);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0 4px;
+  text-decoration: underline;
+  font-size: 14px;
+  transition: opacity 0.2s;
+}
+
+.app-root .auth-switch-btn:hover {
+  opacity: 0.8;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-root .auth-track,
+  .app-root .auth-panel,
+  .app-root .auth-title,
+  .app-root .auth-sub {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 .app-root .fo {
   color: var(--mut);
   font-size: 12px;
@@ -1754,13 +1907,15 @@ body.cpo .app-root .cp,
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 13px 16px;
+  min-height: 52px;
   border-top: 1px solid var(--line);
   font-size: 14px;
   transition: background 0.2s;
   text-decoration: none;
   color: inherit;
+  cursor: pointer;
 }
 
 .app-root .sr:first-child {
@@ -1771,10 +1926,30 @@ body.cpo .app-root .cp,
   background: var(--tint);
 }
 
+.app-root .sr div {
+  min-width: 0;
+  flex: 1;
+}
+
+.app-root .sr b {
+  font: 600 14px/1.3 "Inter Tight", Inter, sans-serif;
+  color: var(--fg);
+}
+
 .app-root .sr small {
   display: block;
   color: var(--mut);
   font-size: 12px;
+  margin-top: 3px;
+  line-height: 1.3;
+}
+
+.app-root .sr b.mono {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-size: 14px;
+  font-weight: 500;
+  text-align: right;
+  flex-shrink: 0;
 }
 
 .app-root .sr.rf {
@@ -1855,4 +2030,86 @@ body.cpo .app-root .cp,
     grid-template-columns: 1fr 1fr;
   }
 }
+
+/* ====================================================================
+   COPILOT INTERACTIVE PROOF NAVIGATION & ROW HIGHLIGHTING
+   ==================================================================== */
+
+@keyframes pulse-highlight-row {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+    background-color: color-mix(in srgb, var(--acc) 30%, transparent);
+    transform: scale(1.015);
+  }
+  30% {
+    box-shadow: 0 0 0 8px rgba(16, 185, 129, 0.25);
+    background-color: color-mix(in srgb, var(--acc) 22%, transparent);
+    transform: scale(1.015);
+  }
+  60% {
+    box-shadow: 0 0 0 16px rgba(16, 185, 129, 0);
+    background-color: color-mix(in srgb, var(--acc) 14%, transparent);
+    transform: scale(1.008);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    background-color: transparent;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-highlight-card {
+  0% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.65);
+    border-color: var(--acc);
+    transform: translateY(-2px);
+  }
+  40% {
+    box-shadow: 0 0 0 12px rgba(16, 185, 129, 0.15);
+    border-color: var(--acc);
+    transform: translateY(-2px);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    transform: translateY(0);
+  }
+}
+
+.app-root .highlighted-row {
+  animation: pulse-highlight-row 3.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+  border: 1px solid var(--acc) !important;
+  position: relative;
+  z-index: 10;
+}
+
+.app-root .highlighted-card {
+  animation: pulse-highlight-card 3.5s cubic-bezier(0.2, 0.8, 0.2, 1) forwards !important;
+  border-color: var(--acc) !important;
+}
+
+/* Clickable sequence chip inside Copilot text responses */
+.app-root .proof-seq-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: var(--tint);
+  color: var(--acc);
+  font: 600 12px "JetBrains Mono", monospace;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  border: 1px solid color-mix(in srgb, var(--acc) 30%, transparent);
+  vertical-align: middle;
+  margin: 0 3px;
+}
+
+.app-root .proof-seq-chip:hover {
+  background: var(--acc);
+  color: var(--bg2);
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(16, 185, 129, 0.35);
+}
+
+
 

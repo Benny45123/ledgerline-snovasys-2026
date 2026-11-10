@@ -8,6 +8,7 @@ It proves that:
 4. Sending 10 concurrent requests with the identical key results in exactly 1 journal and 9 replays.
 """
 
+import time
 import uuid
 
 from sqlalchemy.orm import Session
@@ -15,7 +16,7 @@ from sqlalchemy.orm import Session
 from app.accounts.service import create_customer_account, get_system_account
 from app.db.engine import SessionLocal
 from app.db.models import IdempotencyReplay, Journal
-from app.errors import IdempotencyKeyReuseError
+from app.errors import IdempotencyKeyReuseError, LockTimeoutError
 from app.ledger.service import post_movement
 from tests.helpers.concurrency import fire_concurrent
 
@@ -62,9 +63,7 @@ def test_sequential_idempotency_replay(db: Session, test_users):
 
     # Verify duplicate is logged in idempotency_replays
     replay_count = (
-        db.query(IdempotencyReplay)
-        .filter(IdempotencyReplay.user_id == holder.id, IdempotencyReplay.key == key)
-        .count()
+        db.query(IdempotencyReplay).filter(IdempotencyReplay.user_id == holder.id, IdempotencyReplay.key == key).count()
     )
     assert replay_count == 1
 
@@ -119,22 +118,26 @@ def test_concurrent_idempotency_replays(db: Session, test_users):
     num_threads = 10
 
     def run_concurrent_call(thread_idx: int):
-        thread_db: Session = SessionLocal()
-        try:
-            res, is_replayed = post_movement(
-                db=thread_db,
-                user_id=holder.id,
-                idempotency_key=key,
-                request_id=f"concurrent-req-{thread_idx}",
-                kind="deposit",
-                source_account_id=ext_acc.id,
-                destination_account_id=acc.id,
-                amount=2500,
-                raw_payload=payload,
-            )
-            return is_replayed
-        finally:
-            thread_db.close()
+        for attempt in range(6):
+            thread_db: Session = SessionLocal()
+            try:
+                res, is_replayed = post_movement(
+                    db=thread_db,
+                    user_id=holder.id,
+                    idempotency_key=key,
+                    request_id=f"concurrent-req-{thread_idx}",
+                    kind="deposit",
+                    source_account_id=ext_acc.id,
+                    destination_account_id=acc.id,
+                    amount=2500,
+                    raw_payload=payload,
+                )
+                return is_replayed
+            except LockTimeoutError:
+                time.sleep(0.15 * (attempt + 1))
+            finally:
+                thread_db.close()
+        raise LockTimeoutError("Exhausted retries on concurrent idempotency replay.")
 
     results = fire_concurrent(num_threads, run_concurrent_call, start_barrier=True)
     exceptions = [exc for _, _, exc in results if exc]

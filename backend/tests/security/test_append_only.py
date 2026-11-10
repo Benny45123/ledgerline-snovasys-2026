@@ -28,7 +28,9 @@ def test_append_only_triggers_reject_mutations(db: Session):
         db.rollback()
         current = db.query(LedgerEntry).filter(LedgerEntry.id == entry.id).first()
         if current and current.amount != orig_amount:
-            db.execute(text("UPDATE ledger_entries SET amount = :amt WHERE id = :eid;"), {"amt": orig_amount, "eid": entry.id})
+            db.execute(
+                text("UPDATE ledger_entries SET amount = :amt WHERE id = :eid;"), {"amt": orig_amount, "eid": entry.id}
+            )
             db.commit()
 
     # Attempt to DELETE from journals

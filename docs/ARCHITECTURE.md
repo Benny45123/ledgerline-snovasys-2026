@@ -250,3 +250,65 @@ failure -> INSERT security_events; store 403/404 as key result; COMMIT
 - Build (core): all ten requirements, reversal journals, freeze, hash-chain verify, replay log, security events, rule-based flags with human decision.
 - Stretch: LLM narrative on flags, maker-checker (second admin approves large adjustments), daily limit per account.
 - Deliberately not built (write these in the README with reasons): multi-currency, scheduled/batch transfers, holds/authorisations, external bank rails, real KYC. Each adds an invariant to defend; the brief prefers a small always-correct system.
+
+---
+
+## 9. BalanceVault Enhancements (November 2026 Addendum)
+
+Following official organizer guidance from Snovasys, the system extends LedgerLine into BalanceVault, incorporating the following production-grade operational components while preserving all core financial invariants ($I_1$ to $I_8$).
+
+### 9.1 Account Management & User Onboarding
+- **Self-Service Registration (`POST /auth/register`)**:
+  - Open to unauthenticated prospective account holders.
+  - Generates an active `User` record with role `holder` and Argon2id password hash.
+  - Automatically provisions an initial customer `Account` (e.g., "Primary Savings") with currency `INR`, `balance = 0`, and `overdraft_limit = 0`.
+  - Links the user and account in `account_members` in an atomic transaction.
+  - Records an append-only `user_registered` event in `security_events`.
+  - Rate-limited per IP and email via Redis.
+- **Admin User Onboarding & Management (`/admin/users`)**:
+  - `GET /admin/users`: Lists registered users, roles, active statuses, and account memberships.
+  - `POST /admin/users`: Enables administrators to onboard users with designated roles (`holder`, `auditor`, `admin`).
+  - `POST /admin/users/{id}/status`: Allows administrators to suspend or reactivate user logins without deleting historical audit records.
+
+### 9.2 Redis Distributed Rate Limiting Architecture
+- **Purpose**: Protect authentication (`/auth/login`, `/auth/register`), account onboarding, and money movement endpoints against credential stuffing, brute force, and volumetric denial of service.
+- **Algorithm**: Redis sliding-window counter or token bucket using high-speed atomic scripts / pipelines (`INCR`, `EXPIRE`, or sorted set `ZREMRANGEBYSCORE` + `ZCARD`).
+- **Keyspace Hierarchy**:
+  - `rl:auth:ip:{client_ip}` (Window: 15 min, Limit: 15 attempts)
+  - `rl:auth:email:{normalized_email}` (Window: 15 min, Limit: 15 attempts)
+  - `rl:onboard:ip:{client_ip}` (Window: 1 hour, Limit: 5 registrations)
+  - `rl:movement:user:{user_id}` (Window: 1 min, Limit: 60 movements)
+- **High-Availability & Graceful Fallback**:
+  - In environments without Redis or during transient Redis disconnections, the limiter fails gracefully to local in-process / database throttling (`check_login_throttle`).
+  - Money movement integrity is never compromised by cache failure.
+- **RFC Standard Headers**:
+  - Emits `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+  - On limit exhaustion, returns HTTP 429 `rate_limited` with standard error envelope and `Retry-After` header.
+
+### 9.3 First-Admin Bootstrap & PostgreSQL Role Security Model
+- **Cloud PostgreSQL (Neon) Privilege Isolation Analysis**:
+  - On managed PostgreSQL platforms (such as Neon), database connections operate under restricted project-owner roles lacking global superuser privileges.
+  - Naive attempts to run `ALTER ROLE ... WITH PASSWORD` or mutate administrative roles across users trigger SQLSTATE `42501` (`insufficient_privilege`).
+  - AI tools often misdiagnose this as a missing grant and recommend granting dangerous superuser rights or executing invalid DDL.
+- **Secure Bootstrap Architecture**:
+  - Application-level first administrator bootstrapping is decoupled from database role administration.
+  - A dedicated bootstrap utility (`scripts/bootstrap_admin.py` and CLI `python -m app.auth.bootstrap`) is provided.
+  - **Zero-Admin Invariant Check**: The bootstrap process queries the database:
+    $$\text{COUNT}(id) \text{ FROM users WHERE role = 'admin' AND is_active = true}$$
+    If an active administrator already exists, execution aborts with error `admin_already_exists`.
+  - **Bootstrap Secret Guard**: If configured, `BOOTSTRAP_TOKEN` environment variable must match the invocation argument, preventing unauthorized execution even if no admin exists.
+  - **Database Role Enforcement**:
+    - `ledgerline_app`: Restricted runtime role used by the FastAPI web service (no DDL, no DELETE/UPDATE on ledger tables).
+    - `ledgerline_owner` / bootstrap operator: Migration and bootstrap role with privileges to manage tables and execute security definer functions without granting broad superuser access.
+
+### 9.4 Deployment Health & Readiness Probes
+- **`/health` (Process Liveness)**:
+  - Lightweight, unauthenticated GET probe returning `{"status": "ok"}`.
+  - Verifies that the ASGI event loop and HTTP server are responsive.
+- **`/ready` (Dependency Readiness)**:
+  - Unauthenticated GET probe validating backing dependencies.
+  - Executes `SELECT 1` against PostgreSQL via the active connection pool.
+  - Pings Redis (if configured) via `redis.ping()`.
+  - Returns `200 OK` with `{"status": "ready", "database": "connected", "redis": "connected"}`.
+  - Returns `503 Service Unavailable` with `{"status": "unavailable", "database": "disconnected"}` if any core backing dependency fails.
+

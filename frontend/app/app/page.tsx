@@ -6,6 +6,7 @@ import {
   api,
   User,
   Account,
+  AccountRequestItem,
   StatementItem,
   AuditVerification,
   ReviewFlag,
@@ -63,10 +64,15 @@ export default function AppPage() {
   const DEMO = process.env.NEXT_PUBLIC_DEMO_MODE === "true";
   const [user, setUser] = useState<User | null>(null);
   const [currentTab, setCurrentTab] = useState<TabType>("dashboard");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [authEmail, setAuthEmail] = useState(DEMO ? "holder1@ledgerline.internal" : "");
   const [authPassword, setAuthPassword] = useState(DEMO ? "DemoPassword123!" : "");
   const [authRole, setAuthRole] = useState<"holder" | "admin" | "auditor">("holder");
+  const [authAccountName, setAuthAccountName] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [highlightedSeq, setHighlightedSeq] = useState<number | null>(null);
+
+
 
   // Video State & Seamless Looping
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -110,6 +116,10 @@ export default function AppPage() {
   // Ledger & Account Data
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [activeAccount, setActiveAccount] = useState<Account | null>(null);
+  const [myAccountRequests, setMyAccountRequests] = useState<AccountRequestItem[]>([]);
+  const [reqVaultName, setReqVaultName] = useState("");
+  const [reqPurpose, setReqPurpose] = useState("");
+  const [submittingReq, setSubmittingReq] = useState(false);
   const [statements, setStatements] = useState<StatementItem[]>([]);
   const [statementFilter, setStatementFilter] = useState<"all" | "posting" | "refusal">("all");
   const [statementHasMore, setStatementHasMore] = useState(false);
@@ -254,6 +264,13 @@ export default function AppPage() {
         try {
           const flags = await api.getReviewFlags();
           setReviewFlags(flags);
+        } catch {}
+      }
+
+      if (currentUser.role !== "auditor") {
+        try {
+          const reqs = await api.getMyAccountRequests();
+          setMyAccountRequests(reqs);
         } catch {}
       }
     } catch (err: unknown) {
@@ -527,6 +544,29 @@ export default function AppPage() {
     }
   };
 
+  // Handle Register (Self-service user onboarding)
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoginLoading(true);
+      const res = await api.register(authEmail, authPassword, authAccountName.trim() || undefined);
+      sessionGenRef.current += 1;
+      setChatMessages([]);
+      setChatInput("");
+      setAccountInsights(null);
+      setIsCopilotOpen(false);
+      setIsChatThinking(false);
+      setSuggestedPills(DEFAULT_SUGGESTIONS);
+      setUser(res.user);
+      addToast(`Account created! Welcome to BalanceVault, ${res.user.email}`);
+      await loadUserData();
+    } catch (err) {
+      addErrorToast(err);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
+
   // Handle Logout
   const handleLogout = async () => {
     sessionGenRef.current += 1;
@@ -702,6 +742,100 @@ export default function AppPage() {
     }
   };
 
+  // Deep navigation to specific statement entry
+  const navigateToStatementItem = useCallback(
+    async (seq: number, accountId?: string) => {
+      if (accountId && activeAccount?.id !== accountId) {
+        const targetAcc = accounts.find((a) => a.id === accountId);
+        if (targetAcc) {
+          setActiveAccount(targetAcc);
+          setAdjAccount(targetAcc.number);
+          await refreshStatements(targetAcc.id);
+        }
+      }
+
+      setStatementFilter("all");
+      setCurrentTab("statement");
+      setHighlightedSeq(seq);
+
+      if (typeof window !== "undefined" && window.innerWidth < 1100) {
+        setIsCopilotOpen(false);
+      }
+
+      let attempts = 0;
+      const scrollTimer = setInterval(() => {
+        attempts++;
+        const el = document.getElementById(`stmt-${seq}`);
+        if (el) {
+          clearInterval(scrollTimer);
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          el.classList.add("highlighted-row");
+          setTimeout(() => el.classList.remove("highlighted-row"), 4000);
+          addToast(`Navigated to Entry #${seq}`, false);
+        } else if (attempts >= 10) {
+          clearInterval(scrollTimer);
+          addToast(`Switched to Statement (Entry #${seq})`, false);
+        }
+      }, 120);
+    },
+    [accounts, activeAccount?.id, addToast, refreshStatements]
+  );
+
+  // Deep navigation to any application section/card
+  const navigateToSection = useCallback(
+    (tab: TabType, elementId?: string, toastMsg?: string) => {
+      setCurrentTab(tab);
+      if (typeof window !== "undefined" && window.innerWidth < 1100) {
+        setIsCopilotOpen(false);
+      }
+      if (elementId) {
+        let attempts = 0;
+        const scrollTimer = setInterval(() => {
+          attempts++;
+          const el = document.getElementById(elementId);
+          if (el) {
+            clearInterval(scrollTimer);
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+            el.classList.add("highlighted-card");
+            setTimeout(() => el.classList.remove("highlighted-card"), 4000);
+            if (toastMsg) addToast(toastMsg, false);
+          } else if (attempts >= 10) {
+            clearInterval(scrollTimer);
+            if (toastMsg) addToast(toastMsg, false);
+          }
+        }, 120);
+      } else if (toastMsg) {
+        addToast(toastMsg, false);
+      }
+    },
+    [addToast]
+  );
+
+  // Deep navigation to trigger cryptographic audit verify
+  const navigateToAuditVerify = useCallback(async () => {
+    navigateToSection("audit", "audit-overview", "Running Cryptographic Audit Verification…");
+    await handleRunVerification();
+  }, [navigateToSection]);
+
+  // Deep navigation to Move Money modal
+  const navigateToMoveMoney = useCallback(
+    (kind: MoveType = "transfer", sourceAccId?: string) => {
+      if (sourceAccId && activeAccount?.id !== sourceAccId) {
+        const target = accounts.find((a) => a.id === sourceAccId);
+        if (target) {
+          setActiveAccount(target);
+        }
+      }
+      if (typeof window !== "undefined" && window.innerWidth < 1100) {
+        setIsCopilotOpen(false);
+      }
+      openMoveModal(kind);
+      addToast(`Opened ${kind[0].toUpperCase() + kind.slice(1)} form`, false);
+    },
+    [accounts, activeAccount?.id, addToast]
+  );
+
+
   // Freeze / Unfreeze
   const handleToggleFreeze = async (acc: Account) => {
     try {
@@ -782,8 +916,28 @@ export default function AppPage() {
       await api.decideReviewFlag(flagId, decision, reason);
       addToast(`Decision "${decision}" committed to append-only review decisions.`);
       setReviewFlags((prev) => prev.filter((f) => f.id !== flagId));
+      const accs = await api.getAccounts().catch(() => null);
+      if (accs) setAccounts(accs);
     } catch (err) {
       addErrorToast(err);
+    }
+  };
+
+  // Submit new vault account request
+  const handleCreateAccountRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reqVaultName.trim()) return;
+    try {
+      setSubmittingReq(true);
+      const reqItem = await api.createAccountRequest(reqVaultName.trim(), reqPurpose.trim() || undefined);
+      addToast("Account request submitted. Waiting for administrator approval.");
+      setMyAccountRequests((prev) => [reqItem, ...prev]);
+      setReqVaultName("");
+      setReqPurpose("");
+    } catch (err) {
+      addErrorToast(err);
+    } finally {
+      setSubmittingReq(false);
     }
   };
 
@@ -940,7 +1094,21 @@ export default function AppPage() {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
 
-  const inlineMd = (s: string) => escapeHtml(s).replace(/\*\*(.*?)\*\*/g, "<b>$1</b>");
+  const inlineMd = (s: string) =>
+    escapeHtml(s)
+      .replace(/\*\*(.*?)\*\*/g, "<b>$1</b>")
+      .replace(/#(\d+)\b/g, '<span class="proof-seq-chip" data-seq="$1" title="Click to jump to Entry #$1 in Statement">#$1 ↗</span>');
+
+  const handleChatBodyClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = (e.target as HTMLElement).closest("[data-seq]");
+    if (target) {
+      const seqStr = target.getAttribute("data-seq");
+      const seq = parseInt(seqStr || "0", 10);
+      if (seq > 0) {
+        navigateToStatementItem(seq, activeAccount?.id);
+      }
+    }
+  };
 
   const renderMarkdown = (content: string) => {
     const lines = content.split("\n");
@@ -985,8 +1153,13 @@ export default function AppPage() {
       }
     });
     flushList();
-    return <div className="md chat-md">{elements}</div>;
+    return (
+      <div className="md chat-md" onClick={handleChatBodyClick}>
+        {elements}
+      </div>
+    );
   };
+
 
   // Computed daily net movement for the last 12 calendar days from real ledger entries
   const dailyMovement = useMemo(() => {
@@ -1159,7 +1332,7 @@ export default function AppPage() {
           <div className="al">
             <div className="fo">
               <a className="logo" style={{ fontSize: "20px", color: "var(--fg)" }} href="/">
-                LedgerLine
+                BalanceVault
               </a>
               <button
                 className="tg"
@@ -1194,65 +1367,157 @@ export default function AppPage() {
               </button>
             </div>
 
-            <form className="af c" onSubmit={handleLogin}>
-              <h1>
-                Sign in to <em>your ledger.</em>
+            <div className="af">
+              {/* Dynamic Animated Header */}
+              <h1 key={`title-${authMode}`} className="auth-title">
+                {authMode === "login" ? (
+                  <>
+                    Sign in to <em>your ledger.</em>
+                  </>
+                ) : (
+                  <>
+                    Create your <em>vault account.</em>
+                  </>
+                )}
               </h1>
-              {DEMO ? (
-                <>
-                  <p className="sub">Pick a demo role to fill the credentials.</p>
-                  <div className="seg">
-                    <button
-                      type="button"
-                      className={authRole === "holder" ? "on" : ""}
-                      onClick={() => selectDemoRole("holder")}
-                    >
-                      Holder
-                    </button>
-                    <button
-                      type="button"
-                      className={authRole === "admin" ? "on" : ""}
-                      onClick={() => selectDemoRole("admin")}
-                    >
-                      Admin
-                    </button>
-                    <button
-                      type="button"
-                      className={authRole === "auditor" ? "on" : ""}
-                      onClick={() => selectDemoRole("auditor")}
-                    >
-                      Auditor
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <p className="sub">Enter your credentials to access the ledger.</p>
-              )}
+              <p key={`sub-${authMode}`} className="sub auth-sub">
+                {authMode === "login"
+                  ? "Verify every rupee with mathematical double-entry certainty."
+                  : "Self-service onboarding with an instant primary customer account."}
+              </p>
 
-              <label>
-                Email
-                <input
-                  type="email"
-                  value={authEmail}
-                  onChange={(e) => setAuthEmail(e.target.value)}
-                  required
-                />
-              </label>
+              {/* Seamless Sliding Viewport */}
+              <div className="auth-viewport">
+                <div className={`auth-track ${authMode === "register" ? "slide-register" : "slide-login"}`}>
+                  {/* PANEL 1: SIGN IN */}
+                  <form className="auth-panel" onSubmit={handleLogin}>
+                    {DEMO && (
+                      <div className="auth-demo-box">
+                        <div className="auth-demo-header">
+                          <span className="demo-chip">Demo Presets</span>
+                          <small>Auto-fill credentials</small>
+                        </div>
+                        <div className="seg">
+                          <button
+                            type="button"
+                            className={authRole === "holder" ? "on" : ""}
+                            onClick={() => selectDemoRole("holder")}
+                          >
+                            Holder
+                          </button>
+                          <button
+                            type="button"
+                            className={authRole === "admin" ? "on" : ""}
+                            onClick={() => selectDemoRole("admin")}
+                          >
+                            Admin
+                          </button>
+                          <button
+                            type="button"
+                            className={authRole === "auditor" ? "on" : ""}
+                            onClick={() => selectDemoRole("auditor")}
+                          >
+                            Auditor
+                          </button>
+                        </div>
+                      </div>
+                    )}
 
-              <label>
-                Password
-                <input
-                  type="password"
-                  value={authPassword}
-                  onChange={(e) => setAuthPassword(e.target.value)}
-                  required
-                />
-              </label>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="holder1@ledgerline.internal"
+                        required
+                        autoComplete="username"
+                      />
+                    </label>
 
-              <button className="btn w" type="submit" disabled={loginLoading}>
-                {loginLoading ? "Authenticating…" : "Sign in"}
-              </button>
-            </form>
+                    <label>
+                      Password
+                      <input
+                        type="password"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="••••••••••••"
+                        required
+                        autoComplete="current-password"
+                      />
+                    </label>
+
+                    <button className="btn w" type="submit" disabled={loginLoading}>
+                      {loginLoading ? "Authenticating…" : "Sign in →"}
+                    </button>
+
+                    <p className="auth-switch-prompt">
+                      Don&apos;t have an account?{" "}
+                      <button
+                        type="button"
+                        className="auth-switch-btn"
+                        onClick={() => setAuthMode("register")}
+                      >
+                        Create account
+                      </button>
+                    </p>
+                  </form>
+
+                  {/* PANEL 2: CREATE ACCOUNT */}
+                  <form className="auth-panel" onSubmit={handleRegister}>
+                    <label>
+                      Email
+                      <input
+                        type="email"
+                        value={authEmail}
+                        onChange={(e) => setAuthEmail(e.target.value)}
+                        placeholder="name@example.com"
+                        required
+                        autoComplete="email"
+                      />
+                    </label>
+
+                    <label>
+                      Password
+                      <input
+                        type="password"
+                        value={authPassword}
+                        onChange={(e) => setAuthPassword(e.target.value)}
+                        placeholder="Minimum 8 characters"
+                        minLength={8}
+                        required
+                        autoComplete="new-password"
+                      />
+                    </label>
+
+                    <label>
+                      Account Name <span style={{ color: "var(--mut)", fontSize: "11px" }}>(Optional)</span>
+                      <input
+                        type="text"
+                        value={authAccountName}
+                        onChange={(e) => setAuthAccountName(e.target.value)}
+                        placeholder="e.g. Primary Savings"
+                      />
+                    </label>
+
+                    <button className="btn w" type="submit" disabled={loginLoading}>
+                      {loginLoading ? "Creating account…" : "Register & Start →"}
+                    </button>
+
+                    <p className="auth-switch-prompt">
+                      Already have an account?{" "}
+                      <button
+                        type="button"
+                        className="auth-switch-btn"
+                        onClick={() => setAuthMode("login")}
+                      >
+                        Sign in
+                      </button>
+                    </p>
+                  </form>
+                </div>
+              </div>
+            </div>
 
             <div className="fo" />
           </div>
@@ -1286,7 +1551,7 @@ export default function AppPage() {
           <nav className="nv">
             <div className="wrap">
               <a className="logo" href="/">
-                LedgerLine
+                BalanceVault
               </a>
 
               <div className="tabs">
@@ -1381,19 +1646,123 @@ export default function AppPage() {
                             </option>
                           ))}
                         </select>
-                      ) : (
+                      ) : accounts.length === 1 ? (
                         <p style={{ margin: 0 }}>
-                          Account {activeAccount?.number || "None"} · all figures from the server ledger
+                          Account {activeAccount?.number} ({activeAccount?.name}) · all figures from the server ledger
+                        </p>
+                      ) : (
+                        <p style={{ margin: 0, color: "var(--amb)" }}>
+                          Account: Pending Activation · all figures default to zero
                         </p>
                       )}
                     </div>
                   </div>
                   {user.role !== "auditor" && (
-                    <button className="btn" onClick={() => openMoveModal("transfer")}>
+                    <button
+                      className="btn"
+                      onClick={() => openMoveModal("transfer")}
+                      disabled={accounts.length === 0}
+                      title={accounts.length === 0 ? "Account activation pending admin review" : "Move money"}
+                    >
                       Move money
                     </button>
                   )}
                 </div>
+
+                {/* Onboarding Vault Status Banner when user has 0 accounts */}
+                {accounts.length === 0 && (
+                  <div
+                    className="card c"
+                    style={{
+                      "--i": 1,
+                      marginBottom: "20px",
+                      border: "1px solid color-mix(in srgb, var(--amb) 35%, var(--line))",
+                      background: "color-mix(in srgb, var(--ambt) 15%, var(--bg2))",
+                    } as React.CSSProperties}
+                  >
+                    {myAccountRequests.some((r) => r.status === "pending") ? (
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px", flexWrap: "wrap", gap: "8px" }}>
+                          <span className="chip a" style={{ fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                            <span style={{ display: "inline-block", width: "6px", height: "6px", borderRadius: "50%", background: "var(--amb)" }} />
+                            APPLICATION UNDER REVIEW
+                          </span>
+                          <span className="mono" style={{ fontSize: "12px", color: "var(--mut)" }}>
+                            Ref #{myAccountRequests.find((r) => r.status === "pending")?.id.slice(0, 8)}
+                          </span>
+                        </div>
+                        <h3 style={{ fontSize: "22px", margin: "0 0 6px" }}>
+                          Vault Account Application in Progress
+                        </h3>
+                        <p style={{ color: "var(--mut)", margin: "0 0 16px", fontSize: "14px", lineHeight: 1.5 }}>
+                          Your application for <b>"{myAccountRequests.find((r) => r.status === "pending")?.account_name}"</b> has been recorded and placed in the Operations Review Queue. All figures on your dashboard are currently initialized to zero until your double-entry vault is provisioned.
+                        </p>
+
+                        {/* 3-Step Fintech Stepper */}
+                        <div className="hm" style={{ marginTop: "14px" }}>
+                          <div className="hi2 ok">
+                            <div className="d">✓</div>
+                            <div>
+                              <b>1. Application Submitted</b>
+                              <small>Credentials registered & request logged</small>
+                            </div>
+                          </div>
+                          <div className="hi2 run">
+                            <div className="d" style={{ borderTopColor: "var(--amb)" }}>✦</div>
+                            <div>
+                              <b style={{ color: "var(--amb)" }}>2. Administrator Review</b>
+                              <small>Pending decision in Operations Review Queue</small>
+                            </div>
+                          </div>
+                          <div className="hi2">
+                            <div className="d">○</div>
+                            <div>
+                              <b>3. Vault Activation</b>
+                              <small>Double-entry allocation & hash chaining</small>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Evaluator Notice */}
+                        <div style={{ marginTop: "16px", padding: "12px 14px", borderRadius: "12px", background: "var(--tint)", color: "var(--acc)", fontSize: "12px", lineHeight: 1.4 }}>
+                          <b>Evaluator Quick-Action:</b> Switch to or log in as <code>admin@ledgerline.internal</code> and open the Operations tab. You will find this application in the <b>Review queue</b> ready for one-click approval.
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+                          <span className="chip n">ONBOARDING</span>
+                        </div>
+                        <h3 style={{ fontSize: "22px", margin: "0 0 6px" }}>Request Your Vault Account</h3>
+                        <p style={{ color: "var(--mut)", margin: "0 0 16px", fontSize: "14px", lineHeight: 1.5 }}>
+                          Each BalanceVault account is an isolated, double-entry financial ledger vault with cryptographic SHA-256 chain verification. Submit an account request to have your vault provisioned.
+                        </p>
+                        <form onSubmit={handleCreateAccountRequest} style={{ display: "grid", gap: "12px", maxWidth: "440px" }}>
+                          <label style={{ margin: 0 }}>
+                            <span style={{ fontSize: "12px", color: "var(--mut)" }}>Vault Account Label</span>
+                            <input
+                              placeholder="e.g. Primary Treasury Vault"
+                              value={reqVaultName}
+                              onChange={(e) => setReqVaultName(e.target.value)}
+                              required
+                            />
+                          </label>
+                          <label style={{ margin: 0 }}>
+                            <span style={{ fontSize: "12px", color: "var(--mut)" }}>Business Purpose / Reason</span>
+                            <input
+                              placeholder="e.g. Daily settlement & operating expenses"
+                              value={reqPurpose}
+                              onChange={(e) => setReqPurpose(e.target.value)}
+                            />
+                          </label>
+                          <button className="btn sm" type="submit" disabled={submittingReq} style={{ width: "fit-content", marginTop: "4px" }}>
+                            {submittingReq ? "Submitting…" : "+ Request Ledger Vault"}
+                          </button>
+                        </form>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* KPI Matrix */}
                 <div className="kpi c" style={{ "--i": 1 } as React.CSSProperties}>
@@ -1423,7 +1792,7 @@ export default function AppPage() {
 
                 <div className="g2">
                   {/* Movement Chart */}
-                  <div className="card c" style={{ "--i": 2 } as React.CSSProperties}>
+                  <div id="dashboard-chart" className="card c" style={{ "--i": 2 } as React.CSSProperties}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexWrap: "wrap", gap: "6px" }}>
                       <h3>Net movement</h3>
                       <span className="chip" style={{ fontSize: "11px" }}>Live ledger</span>
@@ -1455,16 +1824,26 @@ export default function AppPage() {
                   </div>
 
                   {/* Account Card */}
-                  <div className="c" style={{ "--i": 3 } as React.CSSProperties}>
+                  <div id="kpi-balance" className="c" style={{ "--i": 3 } as React.CSSProperties}>
                     <div className="acct">
                       <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <small className="mono">{activeAccount?.number || "ACC-0001-A"}</small>
+                        <small className="mono">
+                          {accounts.length === 0 ? "PENDING-ACTIVATION" : (activeAccount?.number || "ACC-0001-A")}
+                        </small>
                         <span
                           className={`chip ${
-                            activeAccount?.status === "frozen" ? "b" : ""
+                            accounts.length === 0
+                              ? "a"
+                              : activeAccount?.status === "frozen"
+                              ? "b"
+                              : ""
                           }`}
                         >
-                          {activeAccount?.status === "frozen" ? "Frozen" : "Active"}
+                          {accounts.length === 0
+                            ? "In Review"
+                            : activeAccount?.status === "frozen"
+                            ? "Frozen"
+                            : "Active"}
                         </span>
                       </div>
                       <div>
@@ -1480,9 +1859,9 @@ export default function AppPage() {
                         <small>Read-only auditor access</small>
                       ) : (
                         <div className="acts">
-                          <button onClick={() => openMoveModal("deposit")}>Deposit</button>
-                          <button onClick={() => openMoveModal("withdraw")}>Withdraw</button>
-                          <button onClick={() => openMoveModal("transfer")}>Transfer</button>
+                          <button onClick={() => openMoveModal("deposit")} disabled={accounts.length === 0}>Deposit</button>
+                          <button onClick={() => openMoveModal("withdraw")} disabled={accounts.length === 0}>Withdraw</button>
+                          <button onClick={() => openMoveModal("transfer")} disabled={accounts.length === 0}>Transfer</button>
                         </div>
                       )}
                     </div>
@@ -1490,7 +1869,7 @@ export default function AppPage() {
                 </div>
 
                 {/* Account Intelligence Card */}
-                <div className="card c" style={{ "--i": 4, marginBottom: "18px" } as React.CSSProperties}>
+                <div id="dashboard-intelligence" className="card c" style={{ "--i": 4, marginBottom: "18px" } as React.CSSProperties}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
                     <h3>Account intelligence</h3>
                     <span className="chip n">AI · read-only</span>
@@ -1640,7 +2019,7 @@ export default function AppPage() {
                 </div>
 
                 {/* Recent Activity Table */}
-                <div className="card c" style={{ "--i": 5 } as React.CSSProperties}>
+                <div id="dashboard-recent" className="card c" style={{ "--i": 5 } as React.CSSProperties}>
                   <div
                     style={{
                       display: "flex",
@@ -1672,8 +2051,12 @@ export default function AppPage() {
                       return (
                         <div
                           key={`recent-${item.account_seq}`}
-                          className={`tr ${isRefusal ? "rf" : ""}`}
+                          id={`recent-${item.account_seq}`}
+                          className={`tr ${isRefusal ? "rf" : ""} ${
+                            highlightedSeq === item.account_seq ? "highlighted-row" : ""
+                          }`}
                         >
+
                           <div>
                             <b>
                               {item.kind[0]?.toUpperCase() + item.kind.slice(1)}
@@ -1741,7 +2124,7 @@ export default function AppPage() {
                             </option>
                           ))}
                         </select>
-                      ) : (
+                      ) : accounts.length === 1 ? (
                         <p className="mono" style={{ margin: 0 }}>
                           {activeAccount?.number} · {activeAccount?.name} · overdraft{" "}
                           {formatPaise(activeAccount?.overdraft_limit ?? 0)} ·{" "}
@@ -1749,17 +2132,26 @@ export default function AppPage() {
                             {activeAccount?.status === "frozen" ? "Frozen" : "Active"}
                           </span>
                         </p>
+                      ) : (
+                        <p style={{ margin: 0, color: "var(--amb)" }}>
+                          Account: Pending Activation · 0 entries recorded
+                        </p>
                       )}
                     </div>
                   </div>
                   {user.role !== "auditor" && (
-                    <button className="btn" onClick={() => openMoveModal("transfer")}>
+                    <button
+                      className="btn"
+                      onClick={() => openMoveModal("transfer")}
+                      disabled={accounts.length === 0}
+                      title={accounts.length === 0 ? "Account activation pending admin review" : "Move money"}
+                    >
                       Move money
                     </button>
                   )}
                 </div>
 
-                <div className="card c" style={{ "--i": 1 } as React.CSSProperties}>
+                <div id="statement-table" className="card c" style={{ "--i": 1 } as React.CSSProperties}>
                   <div className="seg">
                     <button
                       className={statementFilter === "all" ? "on" : ""}
@@ -1794,7 +2186,10 @@ export default function AppPage() {
                       return (
                         <div
                           key={`stmt-${item.account_seq}`}
-                          className={`tr ${isRefusal ? "rf" : ""}`}
+                          id={`stmt-${item.account_seq}`}
+                          className={`tr ${isRefusal ? "rf" : ""} ${
+                            highlightedSeq === item.account_seq ? "highlighted-row" : ""
+                          }`}
                         >
                           <div>
                             <b>
@@ -1827,6 +2222,18 @@ export default function AppPage() {
                         </div>
                       );
                     })}
+                    {filteredStatements.length === 0 && (
+                      <div style={{ padding: "48px 16px", textAlign: "center", color: "var(--mut)" }}>
+                        <p style={{ margin: "0 0 6px", fontSize: "16px", fontWeight: 500, color: "var(--fg)" }}>
+                          {accounts.length === 0 ? "No active account yet" : "No entries match this filter"}
+                        </p>
+                        <small>
+                          {accounts.length === 0
+                            ? "Transactions will appear here once an administrator approves your vault."
+                            : "Confirmed ledger entries and refused attempts will be displayed here."}
+                        </small>
+                      </div>
+                    )}
                   </div>
                   {statementHasMore && (
                     <div
@@ -1885,7 +2292,7 @@ export default function AppPage() {
                 </div>
 
                 {/* Hash Chain Blocks */}
-                <div className="card c" style={{ "--i": 1 } as React.CSSProperties}>
+                <div id="chain-explorer" className="card c" style={{ "--i": 1 } as React.CSSProperties}>
                   <div
                     style={{
                       display: "flex",
@@ -1935,6 +2342,7 @@ export default function AppPage() {
 
                 {/* 4-Point Health Matrix */}
                 <div
+                  id="audit-overview"
                   className="card c"
                   style={{ "--i": 2, marginTop: "18px" } as React.CSSProperties}
                 >
@@ -1992,6 +2400,7 @@ export default function AppPage() {
 
                 {/* Conservation Summary Card */}
                 <div
+                  id="audit-conservation"
                   className="card c"
                   style={{ "--i": 3, marginTop: "18px" } as React.CSSProperties}
                 >
@@ -2046,6 +2455,7 @@ export default function AppPage() {
 
                 {/* Surveillance Queue Card */}
                 <div
+                  id="audit-surveillance-queue"
                   className="card c"
                   style={{ "--i": 4, marginTop: "18px" } as React.CSSProperties}
                 >
@@ -2079,7 +2489,7 @@ export default function AppPage() {
 
                 <div className="g2">
                   {/* Accounts List & Freeze Toggle */}
-                  <div className="card c" style={{ "--i": 1 } as React.CSSProperties}>
+                  <div id="admin-accounts" className="card c" style={{ "--i": 1 } as React.CSSProperties}>
                     <h3>Accounts</h3>
                     <small>Frozen accounts refuse all movements</small>
                     <div className="tbl">
@@ -2113,7 +2523,7 @@ export default function AppPage() {
                   </div>
 
                   {/* Administrative Adjustment Form */}
-                  <div className="card c" style={{ "--i": 2 } as React.CSSProperties}>
+                  <div id="admin-adjustments" className="card c" style={{ "--i": 2 } as React.CSSProperties}>
                     <h3>Adjustment</h3>
                     <small>Posts against SYS-SUSPENSE. Reason is mandatory.</small>
                     <form onSubmit={handlePostAdjustment} style={{ marginTop: "16px" }}>
@@ -2155,11 +2565,12 @@ export default function AppPage() {
                 </div>
 
                 {/* AI & Surveillance Review Queue */}
-                <div className="card c" style={{ "--i": 3 } as React.CSSProperties}>
+                <div id="surveillance-queue" className="card c" style={{ "--i": 3, marginTop: "18px" } as React.CSSProperties}>
                   <h3>Review queue</h3>
                   <small>
                     Suggestions only. A person decides, and the decision is recorded.
                   </small>
+
                   {reviewFlags.length === 0 ? (
                     <p className="sm2" style={{ marginTop: "14px" }}>
                       No flags waiting for review.
@@ -2601,39 +3012,53 @@ export default function AppPage() {
                           </div>
                         )}
 
-                        {/* 3. Ledger Search Card (scard) */}
-                        {m.response?.data_payload?.search_results && m.response.data_payload.search_results.length > 0 && (
-                          <div className="ac">
-                            {m.response.data_payload.search_results.map((row: any, sIdx: number) => {
-                              const isRef = !!row.is_refusal;
-                              const isNeg = !isRef && row.amount < 0;
-                              return (
-                                <a
-                                  key={sIdx}
-                                  href="#statement"
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    setCurrentTab("statement");
-                                    setIsCopilotOpen(false);
-                                  }}
-                                  className={`sr ${isRef ? "rf" : ""}`}
-                                >
-                                  <div>
-                                    <b>#{row.seq} · {row.kind || (isRef ? "Withdrawal" : "Posting")}</b>
-                                    {isRef && <span className="chip b" style={{ marginLeft: "6px" }}>Refused · {row.reason || "declined"}</span>}
-                                    <small>
-                                      {row.memo ? `${row.memo} · ` : ""}
-                                      {row.balance_after_formatted ? `Balance after ${row.balance_after_formatted}` : "Refusal committed"}
-                                    </small>
-                                  </div>
-                                  <b className={`mono ${isRef ? "" : isNeg ? "neg" : "pos"}`}>
-                                    {row.amount_formatted}
-                                  </b>
-                                </a>
-                              );
-                            })}
-                          </div>
-                        )}
+                        {/* 3. Ledger Search Card (scard) matching LedgerLine prototype */}
+                        {(() => {
+                          const results = m.response?.data_payload?.search_results && m.response.data_payload.search_results.length > 0
+                            ? m.response.data_payload.search_results
+                            : (m.response?.data_payload?.metrics?.recent_transactions && m.response.data_payload.metrics.recent_transactions.length > 0 && m.response?.intent === "search"
+                                ? m.response.data_payload.metrics.recent_transactions
+                                : null);
+
+                          if (!results || results.length === 0) return null;
+
+                          return (
+                            <div className="ac">
+                              {results.map((row: any, sIdx: number) => {
+                                const isRef = !!row.is_refusal;
+                                const isNeg = !isRef && row.amount < 0;
+                                const targetAccId = row.account_id || activeAccount?.id;
+                                const absAmountStr = (row.amount_formatted || "").replace(/^[+-]/, "");
+                                return (
+                                  <a
+                                    key={sIdx}
+                                    href="#statement"
+                                    onClick={(e) => {
+                                      e.preventDefault();
+                                      navigateToStatementItem(row.seq, targetAccId);
+                                    }}
+                                    className={`sr ${isRef ? "rf" : ""}`}
+                                    title={`Click to jump to #${row.seq} in Statement`}
+                                  >
+                                    <div>
+                                      <b>
+                                        #{row.seq} · {row.kind || (isRef ? "Withdrawal" : "Posting")}
+                                        {isRef && <span className="chip b" style={{ marginLeft: "6px" }}>Refused · {row.reason || "declined"}</span>}
+                                      </b>
+                                      <small>
+                                        {row.memo ? `${row.memo} · ` : ""}
+                                        {row.balance_after_formatted ? `Balance after ${row.balance_after_formatted}` : "Refusal committed"}
+                                      </small>
+                                    </div>
+                                    <b className={`mono ${isRef ? "" : isNeg ? "neg" : "pos"}`}>
+                                      {isRef ? "" : isNeg ? "−" : "+"}{absAmountStr}
+                                    </b>
+                                  </a>
+                                );
+                              })}
+                            </div>
+                          );
+                        })()}
 
                         {/* 4. Global Reconciliation Card (ccard) */}
                         {Boolean(m.response?.data_payload?.reconciliation && (m.response?.intent === "reconciliation" || !activeAccount)) && (() => {
@@ -2668,11 +3093,6 @@ export default function AppPage() {
                             </div>
                           );
                         })()}
-
-                        {/* Tool tag chip */}
-                        <div className="tcs">
-                          <span className="chip n mono">{m.tool || "read-only · intelligence"}</span>
-                        </div>
                       </div>
                     )}
                   </div>

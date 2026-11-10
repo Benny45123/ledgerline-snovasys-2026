@@ -168,7 +168,7 @@ export default function Home() {
       <nav className={navScrolled ? "s" : ""}>
         <div className="wrap">
           <a className="logo" href="#top">
-            LedgerLine
+            BalanceVault
           </a>
 
           <div className="links">
@@ -706,7 +706,7 @@ export default function Home() {
       {/* Footer */}
       <footer>
         <div className="wrap">
-          <span>© 2026 LedgerLine</span>
+          <span>© 2026 BalanceVault (formerly LedgerLine)</span>
           <span className="mono">Σ in = Σ out</span>
         </div>
       </footer>
