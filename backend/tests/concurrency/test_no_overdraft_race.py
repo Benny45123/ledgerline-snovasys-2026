@@ -51,9 +51,10 @@ def test_no_overdraft_race(db: Session, test_users):
     # 3. Prepare 20 concurrent withdrawal attempts of ₹30 (3,000 paise)
     num_threads = 20
     withdraw_amount = 3000
+    run_id = uuid.uuid4().hex[:8]
 
     def run_withdrawal(thread_idx: int):
-        idem_key = f"race-withdraw-{thread_idx}-{uuid.uuid4()}"
+        idem_key = f"race-withdraw-{run_id}-{thread_idx}-{uuid.uuid4()}"
         for attempt in range(8):
             thread_db: Session = SessionLocal()
             try:
@@ -96,7 +97,7 @@ def test_no_overdraft_race(db: Session, test_users):
     # Verify journal and refusal counts for this account
     withdrawal_journals = (
         db.query(Journal)
-        .filter(Journal.kind == "withdrawal", Journal.idempotency_key.like("race-withdraw-%"))
+        .filter(Journal.kind == "withdrawal", Journal.idempotency_key.like(f"race-withdraw-{run_id}-%"))
         .count()
     )
     assert withdrawal_journals == 3
