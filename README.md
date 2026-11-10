@@ -1,4 +1,4 @@
-# LedgerLine — Money Movement with a Ledger You Can Prove
+# BalanceVault (formerly LedgerLine) — Money Movement with a Ledger You Can Prove
 
 > **Snovasys Fresher Hiring Challenge 2026**  
 > *"One rupee created, lost, or moved by the wrong person costs the system. A small system that is always right beats a large one that leaks."*
@@ -6,19 +6,24 @@
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-Rate_Limiting-DC382D?logo=redis&logoColor=white)](https://redis.io/)
 [![Next.js](https://img.shields.io/badge/Next.js-16.4-black?logo=next.js&logoColor=white)](https://nextjs.org/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-v4-38B2AC?logo=tailwind-css&logoColor=white)](https://tailwindcss.com/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
 
-## 1. What is LedgerLine?
+## 1. What is BalanceVault?
 
-LedgerLine is a high-integrity financial core and provable double-entry bookkeeping system designed to move money with mathematical certainty. In LedgerLine:
+BalanceVault (formerly LedgerLine) is a high-integrity financial core and provable double-entry bookkeeping system designed to move money with mathematical certainty. In BalanceVault:
 
 1. **Books Balance**: Every rupee moved has equal, opposite debits and credits. The sum of all accounts (including the external world) is always zero.
 2. **Exactly Once**: Every state mutation requires an `Idempotency-Key`. Replaying the same key never moves money twice and returns the exact original response.
 3. **Provable History**: The ledger is append-only. Each entry is cryptographically linked to the previous via a per-account SHA-256 hash chain verified by database triggers and audit endpoints.
+4. **Self-Service Onboarding & RBAC**: Automated registration provisions user and primary accounts atomically; administrators manage user lifecycle and status without self-deactivation risks.
+5. **Distributed Rate Limiting**: Redis sliding-window algorithm protects endpoints with thread-safe in-memory fallback for zero downtime.
+6. **Zero-Admin Guard Bootstrap**: First-admin deployment script safely initializes administrative credentials on restricted cloud PostgreSQL instances (Neon/Supabase).
+7. **Comprehensive Health & Readiness**: `/health` liveness probe and dual-dependency `/ready` probe reporting PostgreSQL and Redis readiness.
 
 ---
 

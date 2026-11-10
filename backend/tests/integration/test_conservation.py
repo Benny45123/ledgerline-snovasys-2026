@@ -26,11 +26,9 @@ def test_conservation_invariant(db: Session, test_users):
     from sqlalchemy import func
 
     from app.db.models import Account
+
     initial_customer_sum = int(
-        db.query(func.coalesce(func.sum(Account.balance), 0))
-        .filter(Account.kind == "customer")
-        .scalar()
-        or 0
+        db.query(func.coalesce(func.sum(Account.balance), 0)).filter(Account.kind == "customer").scalar() or 0
     )
 
     # 1. Create two customer accounts

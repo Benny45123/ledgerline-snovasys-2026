@@ -26,13 +26,14 @@ from app.db.engine import SessionLocal
 from app.deps import get_request_id
 from app.errors import AppError
 from app.logging import logger, setup_logging
+from app.rate_limit import check_redis_health
 from app.review.routes import router as review_router
 
 setup_logging(env=settings.ENV)
 
 app = FastAPI(
-    title="LedgerLine API",
-    description="Money movement with a ledger you can prove.",
+    title="BalanceVault API",
+    description="Money movement with a ledger you can prove. Formerly LedgerLine.",
     version="0.1.0",
     docs_url="/docs" if settings.DOCS_ENABLED else None,
     redoc_url="/redoc" if settings.DOCS_ENABLED else None,
@@ -157,19 +158,44 @@ def health_probe() -> dict[str, str]:
 
 @app.get("/ready", tags=["Operational"])
 def ready_probe() -> dict[str, str]:
-    """Database connectivity and readiness probe."""
+    """Database connectivity and distributed cache readiness probe."""
     db = SessionLocal()
+    db_connected = False
     try:
         db.execute(text("SELECT 1"))
-        return {"status": "ready", "database": "connected"}
+        db_connected = True
     except Exception as e:
-        logger.error("readiness_check_failed", error=str(e))
-        return JSONResponse(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "unavailable", "database": "disconnected"},
-        )
+        logger.error("readiness_db_check_failed", error=str(e))
     finally:
         db.close()
+
+    if not db_connected:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unavailable", "database": "disconnected", "redis": "unknown"},
+        )
+
+    redis_ok = check_redis_health()
+    redis_status = "connected" if redis_ok else ("disabled" if not settings.REDIS_ENABLED else "disconnected")
+
+    return {
+        "status": "ready",
+        "database": "connected",
+        "redis": redis_status,
+    }
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    """Ensure database schema tables exist on application startup."""
+    try:
+        import app.db.models  # noqa: F401
+        from app.db.base import Base
+        from app.db.engine import engine
+
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        logger.warning("startup_table_creation_notice", error=str(e))
 
 
 # Mount Domain Routers

@@ -1,7 +1,7 @@
-# LedgerLine — Official Submission Write-Up & Evaluation Answers
+# BalanceVault (formerly LedgerLine) — Official Submission Write-Up & Evaluation Answers
 
 > **Snovasys Fresher Hiring Challenge 2026**  
-> **Challenge**: "LedgerLine, money movement with a ledger you can prove"  
+> **Challenge**: "BalanceVault (formerly LedgerLine), money movement with a ledger you can prove"  
 > **Candidate Track**: Individual Assessment  
 
 ---
@@ -9,7 +9,7 @@
 ## Part 1: Comprehensive System Write-Up (750 Words)
 
 ### 1. What We Built
-LedgerLine is a high-integrity financial core and provable double-entry bookkeeping engine designed to move money with mathematical certainty. Financial systems fail when books stop balancing (lost credits, double pays, race conditions) or when nobody can prove what happened after an incident. LedgerLine solves both problems completely through three non-negotiable laws:
+BalanceVault (formerly LedgerLine) is a high-integrity financial core and provable double-entry bookkeeping engine designed to move money with mathematical certainty. Financial systems fail when books stop balancing (lost credits, double pays, race conditions) or when nobody can prove what happened after an incident. BalanceVault solves both problems completely through three non-negotiable laws:
 1. **The Books Always Balance**: Every money movement is modeled as a balanced double-entry journal where signed entries sum to exactly zero ($\sum \text{entries} = 0$). External money enters and leaves through a dedicated `EXTERNAL` world account, ensuring the global balance across all accounts is always zero.
 2. **Exactly Once**: Every state mutation requires an `Idempotency-Key` scoped to `(user_id, key)` with a stored SHA-256 digest of the canonical request body. Replaying the same key returns the exact cached HTTP response with header `Idempotent-Replayed: true` and logs an append-only replay record without moving money again.
 3. **Provable History**: The ledger is strictly append-only. Every entry is cryptographically linked to the previous entry via a per-account SHA-256 hash chain (`entry_hash = sha256(prev_hash || canonical_fields)`). An audit verification engine (`GET /audit/verify`) traverses every entry, recomputes hashes, reconciles cached balances, and flags any database tampering.

@@ -106,7 +106,9 @@ def test_holder_cannot_transfer_from_system_account(db: Session, test_users):
     holder1 = test_users["holder1"]
     ext_acc = get_system_account(db, "external")
     suspense_acc = get_system_account(db, "suspense")
-    h1_account = create_customer_account(db, f"System Transfer Guard {uuid.uuid4().hex[:4]}", holder1.id, overdraft_limit=0)
+    h1_account = create_customer_account(
+        db, f"System Transfer Guard {uuid.uuid4().hex[:4]}", holder1.id, overdraft_limit=0
+    )
 
     # Attempt transfer from EXTERNAL
     with pytest.raises(NotFoundError):
@@ -179,4 +181,3 @@ def test_transfer_route_rejects_unowned_or_system_source_account(client: TestCli
     )
     assert resp_unowned.status_code == 404
     assert resp_unowned.json()["error"]["code"] == "not_found"
-

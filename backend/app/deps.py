@@ -51,9 +51,7 @@ def require_role(*allowed_roles: str) -> Callable[[User], User]:
 
     def role_checker(current_user: User = Depends(get_current_user)) -> User:
         if current_user.role not in allowed_roles:
-            raise ForbiddenError(
-                message=f"Access denied. Requires one of roles: {', '.join(allowed_roles)}"
-            )
+            raise ForbiddenError(message=f"Access denied. Requires one of roles: {', '.join(allowed_roles)}")
         return current_user
 
     return role_checker

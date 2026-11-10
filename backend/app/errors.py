@@ -94,6 +94,17 @@ class NotFoundError(AppError):
     message = "The requested resource was not found."
 
 
+class ConflictError(AppError):
+    status_code = 409
+    code = "conflict"
+    message = "Resource conflict detected."
+
+
+class UserAlreadyExistsError(ConflictError):
+    code = "user_already_exists"
+    message = "A user with this email address already exists."
+
+
 # 409 Conflict (Refusals recorded in ledger)
 class RefusalError(AppError):
     status_code = 409

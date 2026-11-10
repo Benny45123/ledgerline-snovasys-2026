@@ -123,3 +123,58 @@ Deploy early in the week, not on the last day. People who leave it to the end us
 ---
 
 **The interview afterwards.** Shortlisted candidates walk through their own code and make a change we pick, live. Expect to be asked exactly where the balance is checked and the debit is written, whether those happen atomically, and what happens when two of those run at the same instant or the same request arrives twice. If you cannot answer that, the rest does not help.
+
+---
+
+## Official Addendum & Clarifications: BalanceVault (November 2026)
+
+> Official clarification provided by the Snovasys hiring challenge organizers (November 6 – 12, 2026).
+
+### 1. Challenge Identity & Continuity
+- **BalanceVault is the renamed LedgerLine challenge**: It is the same continuous challenge, not a new or separate one.
+- **Core Financial Invariants Retained**: All original financial integrity requirements—double-entry accounting, idempotency, concurrency safety, overdraft prevention, and append-only audit ledger—remain fully applicable and evaluated under the same rubric.
+
+### 2. Additional Mandatory Requirements
+The updated problem description adds explicit emphasis on production implementation and deployment aspects. These are additional mandatory requirements (not replacements):
+1. **Account Management & User Onboarding**: Self-service registration for account holders, user onboarding workflows, and administrative account management.
+2. **RBAC (Role-Based Access Control)**: Rigorous server-enforced access boundaries separating `admin`, `holder`, and read-only `auditor` roles.
+3. **Database Architecture**: PostgreSQL integration (with structured migrations and strict relational schemas).
+4. **Redis Rate Limiting**: Redis integration for backend rate limiting across sensitive endpoints (auth, money movement, API abuse prevention).
+5. **First-Admin Bootstrap Script**: A dedicated, idempotent, and secure bootstrap mechanism to provision the initial administrator without bypassing database role constraints.
+6. **Database Roles & Deployment Health Checks**: Explicit database role separation (runtime app role vs schema owner/migration role) alongside unauthenticated, reliable `/health` (liveness) and `/ready` (readiness + database/cache connectivity) endpoints.
+
+### 3. Original Deliverables Retained
+All original deliverables remain strictly mandatory:
+- `THREATS.md` (Threat modeling and mitigation catalog)
+- `PROMPTS.md` (Dated AI interaction history with defect-catching examples)
+- Automated concurrency and idempotency test suites
+- Comprehensive API documentation
+- 5-minute video demonstration
+- Technical architectural write-up
+
+### 4. Implementation Strategy: Extend, Do Not Rebuild
+Organizers explicitly clarified: *"Please extend your existing LedgerLine implementation. You do not need to start a separate implementation. BalanceVault will be evaluated on the same rubric, with the new deployment / RBAC / Redis items added to it."*
+
+---
+
+### Portal Submission & Problem Context: BalanceVault
+*Snovasys Fresher Hiring Challenge 2026 — VVIT (November 6 – 12, 2026)*
+
+**Tagline**: *BalanceVault — money movement with a ledger you can prove*  
+**Overview**: A secure account management platform with role-based access, user onboarding, and auditable account operations.
+
+#### Core Problem
+Managing financial accounts and their associated operations requires more than just storing account information. It also requires controlled access, secure authentication, clear onboarding, and accountability for important actions. BalanceVault brings these capabilities together: structured account management, role-based access, onboarding workflows, and auditability.
+
+#### Required Capabilities Checklist
+- [x] Responsive, fintech-grade frontend interface.
+- [x] Backend API service with strict request validation and error isolation.
+- [x] PostgreSQL database integration with automated migrations and relational constraints.
+- [x] Dedicated database roles separating runtime app privileges from migration/owner privileges.
+- [x] Authentication and role-based access control (RBAC).
+- [x] Account-holder registration and account onboarding workflows.
+- [x] Admin functionality for user management, account onboarding, and audit-log inspection.
+- [x] Redis integration for backend rate limiting.
+- [x] Backend operational health (`/health`) and readiness (`/ready`) endpoints.
+- [x] Secure first-admin bootstrap script handling PostgreSQL permission nuances.
+

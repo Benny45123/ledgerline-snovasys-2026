@@ -7,6 +7,7 @@ Instead of permanently locking accounts (which would allow an adversary to DoS
 shared judge/seed accounts), progressive sleep delays are enforced and an HTTP 429
 is returned when rate limits are exceeded. Every failure is audited.
 """
+
 import time
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -55,9 +56,7 @@ def check_login_throttle(db: Session, email: str, ip: str | None) -> None:
     fails = max(email_fails, ip_fails)
 
     if fails >= MAX_ATTEMPTS_BEFORE_429:
-        raise RateLimitedError(
-            message="Too many failed login attempts. Please wait 15 minutes before retrying."
-        )
+        raise RateLimitedError(message="Too many failed login attempts. Please wait 15 minutes before retrying.")
 
     if fails >= MAX_ATTEMPTS_BEFORE_DELAY:
         delay = min(2.0, (fails - MAX_ATTEMPTS_BEFORE_DELAY + 1) * 0.25)

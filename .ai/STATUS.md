@@ -68,16 +68,40 @@
   - Scoped Global Ledger Reconciliation card in `backend/app/review/copilot.py` and `frontend/app/app/page.tsx` strictly to explicit reconciliation queries (`intent === "reconciliation"`) or the global auditor view (`!currentAccount`), eliminating global card spam when inspecting customer accounts.
   - Scoped the full circular SVG risk gauge card to `intent === "anomaly"` or elevated risk (`risk_score >= 35`), keeping normal query responses clean with the top compact insight pill.
   - Added unit test `test_dynamic_risk_scoring_and_reconciliation_scoping` in `backend/tests/unit/test_copilot.py` (8/8 tests passing).
+- [x] Interactive Copilot Deep-Linking & Clickable Proofs (`backend/app/review/copilot.py`, `backend/app/review/analytics.py`, `frontend/app/app/page.tsx`, `frontend/app/app/app.css`):
+  - Natural language intent routing for previous transactions, history, transfers, statement, and action queries.
+  - Backend search & metrics enriched with sequence numbers `#<seq>` and `account_id`.
+  - Refined Copilot UI to match `frontend/LedgerLine — app.html` prototype identically:
+    - Removed repetitive 4-button proof-nav-bar and tool tag chips from assistant messages.
+    - Rendered clean `.ac` search card with standard `.sr` rows (no clunky "Clickable Proofs" header or "Jump ↗" badges).
+    - Ample vertical padding and height (`min-height: 52px; padding: 13px 16px; gap: 14px;`) with clean typography.
+    - Clicking any transaction item in the card or `#<seq>` in chat navigates directly to that transaction in Statement with account switching, filter clearing, scrolling, and animated emerald pulse highlight.
 
-## In Progress
-- [ ] Final smoke check of live deployment and incognito demo credentials.
+- [x] BalanceVault Execution Plan (organizer addendum):
+  - [x] Documentation alignment: `docs/Problem_Statement.md`, `docs/ARCHITECTURE.md`, `docs/API.md`, `THREATS.md`, `docs/UNFINISHED.md`, `README.md`, `docs/WRITEUP.md`.
+  - [x] Execution plan artifact generated (`balancevault_execution_plan.md`) and accepted by human operator.
+  - [x] Account management & user onboarding backend endpoints (`POST /auth/register`, `GET /admin/users`, `POST /admin/users`, `POST /admin/users/{user_id}/status`).
+  - [x] Frontend user onboarding flow (registration tab on auth screen with instant primary customer account) and Admin User Management Directory panel with status toggle and live refresh.
+  - [x] Redis distributed sliding-window rate limiting (`backend/app/rate_limit.py`) with thread-safe in-memory fallback, attached to `/auth/login`, `/auth/register`, and money movements (`deposit`, `withdraw`, `transfer`).
+  - [x] Dedicated first-admin bootstrap script (`scripts/bootstrap_admin.py`) with zero-admin guard and role permission isolation.
+  - [x] Enriched deployment health and readiness checks (`/health`, `/ready` verifying both PostgreSQL and Redis connectivity).
+- [x] Admin Operations UI Refinement:
+  - Removed cluttered User Directory table and bulk account list from the Admin Operations view per operator instructions.
+  - Restored clean, fintech-grade layout matching `frontend/LedgerLine — app.html`: side-by-side Accounts & Adjustment cards, followed by the focused AI Review Queue ("Suggestions only. A person decides, and the decision is recorded. No flags waiting for review.").
+- [x] Institutional Account Request & Admin Approval Flow (`POST /auth/register`, `GET /accounts/requests/mine`, `POST /accounts/requests`, `POST /review/flags/{flag_id}/decision`):
+  - New users register without unvetted vault creation. A pending `AccountRequest` is recorded and an `account_request` flag is queued in the Admin Review Queue.
+  - Zero-account state: newly registered users see clean default zeros across all KPIs (`₹0.00` balance, `+₹0.00` credits, `−₹0.00` debits, `0` refusals) and an interactive 3-step Fintech Onboarding Status Stepper card (`🟡 APPLICATION UNDER REVIEW`).
+  - Admin Review Queue: reviews the onboarding flag with zero UI bloat ("Suggestions only. A person decides, and the decision is recorded. No flags waiting for review.").
+  - Approval / Dismissal: approving automatically provisions the double-entry customer vault via `create_customer_account` in an atomic transaction, activates the vault with `₹0.00` ready for transfers and statements, records an append-only `ReviewDecision`, and logs audit trail `SecurityEvent`.
+  - Automated integration test `backend/tests/integration/test_account_onboarding_approval.py` passes completely (2/2 tests green).
+
+- None (all planned deliverables completed).
 
 ## Blocked
 - None.
 
 ## Next Steps
-- Final deployment verification (backend on Render/Fly, frontend on Vercel).
-- Prepare 5-minute video walkthrough following `.ai/WALKTHROUGH.md` and `docs/WRITEUP.md`.
-- Tick "I am done. Submit this for evaluation" before Thursday deadline.
+1. End-to-end integration and smoke run against target cloud deployment (Neon PostgreSQL + Redis).
+2. Final code freeze ahead of submission deadline.
 
 

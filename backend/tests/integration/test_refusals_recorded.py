@@ -44,11 +44,7 @@ def test_refused_withdrawal_is_persisted_in_db(db: Session, test_users: dict[str
         )
 
     # Verify a permanent refusal record was committed to refused_attempts
-    refusal_records = (
-        db.query(RefusedAttempt)
-        .filter(RefusedAttempt.account_id == account.id)
-        .all()
-    )
+    refusal_records = db.query(RefusedAttempt).filter(RefusedAttempt.account_id == account.id).all()
     assert len(refusal_records) == 1
     assert refusal_records[0].amount == 5000
     assert refusal_records[0].reason_code == "insufficient_funds"
