@@ -65,11 +65,7 @@ def call_gemini_api(system_prompt: str, user_prompt: str, api_key: str, model: s
     }
     combined_prompt = f"{system_prompt}\n\n---\nUSER INQUIRY AND CONTEXT:\n{user_prompt}"
     payload = {
-        "contents": [
-            {
-                "parts": [{"text": combined_prompt}]
-            }
-        ],
+        "contents": [{"parts": [{"text": combined_prompt}]}],
         "generationConfig": {
             "temperature": 0.2,
             "maxOutputTokens": 1200,
@@ -102,10 +98,7 @@ def synthesize_with_llm(
 
     # Construct quarantined user payload
     sanitized_query = sanitize_untrusted_text(user_query)
-    user_prompt = (
-        f"{context_text}\n\n"
-        f"<untrusted_user_query>\n{sanitized_query}\n</untrusted_user_query>"
-    )
+    user_prompt = f"{context_text}\n\n<untrusted_user_query>\n{sanitized_query}\n</untrusted_user_query>"
 
     # 1. Try Groq if configured
     groq_key = settings.GROQ_API_KEY or (settings.LLM_API_KEY if settings.LLM_PROVIDER == "groq" else None)

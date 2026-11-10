@@ -74,23 +74,23 @@ def get_account_metrics(db: Session, account_id: UUID) -> dict[str, Any]:
                 last_7d_debits += pos_amt
 
         if len(recent_transactions) < 10:
-            recent_transactions.append({
-                "seq": entry.account_seq,
-                "kind": journal.kind,
-                "amount": entry.amount,
-                "amount_formatted": format_paise(entry.amount),
-                "balance_after": entry.balance_after,
-                "balance_after_formatted": format_paise(entry.balance_after),
-                "created_at": entry.created_at.isoformat(),
-                "memo": journal.memo or "",
-            })
+            recent_transactions.append(
+                {
+                    "account_id": str(account.id),
+                    "seq": entry.account_seq,
+                    "kind": journal.kind,
+                    "amount": entry.amount,
+                    "amount_formatted": format_paise(entry.amount),
+                    "balance_after": entry.balance_after,
+                    "balance_after_formatted": format_paise(entry.balance_after),
+                    "created_at": entry.created_at.isoformat(),
+                    "memo": journal.memo or "",
+                }
+            )
 
     # Count refused attempts
     refusal_count = (
-        db.query(func.count(RefusedAttempt.id))
-        .filter(RefusedAttempt.account_id == account_id)
-        .scalar()
-        or 0
+        db.query(func.count(RefusedAttempt.id)).filter(RefusedAttempt.account_id == account_id).scalar() or 0
     )
 
     tx_count = len(entries)
@@ -157,10 +157,7 @@ def compute_fraud_risk_score(db: Session, account_id: UUID) -> tuple[int, str, l
 
     # 2. Refusal history (recent 48h and lifetime)
     total_refusals = (
-        db.query(func.count(RefusedAttempt.id))
-        .filter(RefusedAttempt.account_id == account_id)
-        .scalar()
-        or 0
+        db.query(func.count(RefusedAttempt.id)).filter(RefusedAttempt.account_id == account_id).scalar() or 0
     )
     recent_refusals = (
         db.query(func.count(RefusedAttempt.id))
@@ -209,11 +206,7 @@ def compute_fraud_risk_score(db: Session, account_id: UUID) -> tuple[int, str, l
         reasons.append(f"Historical refusal record: {total_refusals} previous refused attempt on file.")
 
     # Factor 3: Open surveillance review flags
-    open_flags = (
-        db.query(ReviewFlag)
-        .filter(ReviewFlag.account_id == account_id, ReviewFlag.status == "open")
-        .all()
-    )
+    open_flags = db.query(ReviewFlag).filter(ReviewFlag.account_id == account_id, ReviewFlag.status == "open").all()
     if open_flags:
         flag_points = min(35, len(open_flags) * 20)
         score += flag_points
@@ -230,10 +223,14 @@ def compute_fraud_risk_score(db: Session, account_id: UUID) -> tuple[int, str, l
         drain_ratio = total_debits / total_credits
         if drain_ratio >= 0.95 and total_credits >= 100_00:
             score += 20
-            reasons.append(f"High fund depletion: {int(drain_ratio * 100)}% of cumulative inflows have been withdrawn ({format_paise(total_debits)} of {format_paise(total_credits)}).")
+            reasons.append(
+                f"High fund depletion: {int(drain_ratio * 100)}% of cumulative inflows have been withdrawn ({format_paise(total_debits)} of {format_paise(total_credits)})."
+            )
         elif drain_ratio >= 0.75 and total_credits >= 100_00:
             score += 10
-            reasons.append(f"Elevated fund utilization: {int(drain_ratio * 100)}% of cumulative inflows have been transferred out.")
+            reasons.append(
+                f"Elevated fund utilization: {int(drain_ratio * 100)}% of cumulative inflows have been transferred out."
+            )
 
     # Factor 5: Velocity & Rapid Succession in last 2 hours
     cutoff_2h = now - timedelta(hours=2)
@@ -263,14 +260,18 @@ def compute_fraud_risk_score(db: Session, account_id: UUID) -> tuple[int, str, l
         if total_credits > 0 and largest_debit >= int(total_credits * 0.70) and total_credits >= 100_00:
             pct = int((largest_debit / total_credits) * 100)
             score += 15
-            reasons.append(f"Substantial single outflow: Single transfer of {format_paise(largest_debit)} accounts for {pct}% of total deposits.")
+            reasons.append(
+                f"Substantial single outflow: Single transfer of {format_paise(largest_debit)} accounts for {pct}% of total deposits."
+            )
         elif len(debit_entries) >= 3:
             latest_debit = abs(debit_entries[0].amount)
             prior_debits = [abs(e.amount) for e in debit_entries[1:]]
             avg_prior = sum(prior_debits) // len(prior_debits)
             if avg_prior > 0 and latest_debit >= avg_prior * 3:
                 score += 18
-                reasons.append(f"Outlier outflow: Latest debit ({format_paise(latest_debit)}) exceeds 3x typical average debit ({format_paise(avg_prior)}).")
+                reasons.append(
+                    f"Outlier outflow: Latest debit ({format_paise(latest_debit)}) exceeds 3x typical average debit ({format_paise(avg_prior)})."
+                )
 
     # Score clamping and level categorization
     score = max(0, min(100, score))
@@ -382,6 +383,7 @@ def search_ledger_transactions(db: Session, account_id: UUID, query_text: str) -
             {
                 "type": "refusal",
                 "is_refusal": True,
+                "account_id": str(account_id),
                 "seq": r.account_seq,
                 "kind": "Withdrawal",
                 "amount": r.amount,
@@ -416,10 +418,11 @@ def search_ledger_transactions(db: Session, account_id: UUID, query_text: str) -
 
     matches = query.limit(10).all()
 
-    return [
+    results: list[dict[str, Any]] = [
         {
             "type": "posting",
             "is_refusal": False,
+            "account_id": str(account_id),
             "seq": e.account_seq,
             "kind": j.kind.capitalize(),
             "amount": e.amount,
@@ -431,6 +434,39 @@ def search_ledger_transactions(db: Session, account_id: UUID, query_text: str) -
         }
         for e, j in matches
     ]
+
+    # If general inquiry (e.g. 'show my previous transactions') with no restrictive amount or direction,
+    # also include any recent refusal attempts so the user gets complete proof
+    if not is_credit and not is_debit and not amt_threshold and not is_largest:
+        refusals = (
+            db.query(RefusedAttempt)
+            .filter(RefusedAttempt.account_id == account_id)
+            .order_by(RefusedAttempt.account_seq.desc())
+            .limit(5)
+            .all()
+        )
+        for r in refusals:
+            results.append(
+                {
+                    "type": "refusal",
+                    "is_refusal": True,
+                    "account_id": str(account_id),
+                    "seq": r.account_seq,
+                    "kind": "Withdrawal",
+                    "amount": r.amount,
+                    "amount_formatted": format_paise(r.amount),
+                    "reason": r.reason_code,
+                    "balance_after": None,
+                    "balance_after_formatted": "",
+                    "memo": "",
+                    "created_at": r.created_at.isoformat(),
+                }
+            )
+        # Sort combined results by created_at descending
+        results.sort(key=lambda x: str(x.get("created_at", "")), reverse=True)
+        results = results[:10]
+
+    return results
 
 
 def get_global_audit_reconciliation(db: Session) -> dict[str, Any]:
@@ -445,9 +481,7 @@ def get_global_audit_reconciliation(db: Session) -> dict[str, Any]:
     ext_acc = db.query(Account).filter(Account.kind == "external").first()
     susp_acc = db.query(Account).filter(Account.kind == "suspense").first()
 
-    customer_balance_sum = (
-        db.query(func.sum(Account.balance)).filter(Account.kind == "customer").scalar() or 0
-    )
+    customer_balance_sum = db.query(func.sum(Account.balance)).filter(Account.kind == "customer").scalar() or 0
 
     is_balanced = total_balance == 0
     ext_balance = ext_acc.balance if ext_acc else 0
