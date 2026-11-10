@@ -21,6 +21,7 @@ from app.db.engine import get_db
 from app.db.models import Account, AccountMember, AccountRequest, ReviewDecision, ReviewFlag, SecurityEvent, User
 from app.deps import get_current_user, require_role
 from app.errors import NotFoundError
+from app.logging import logger
 from app.review.analytics import compute_fraud_risk_score, forecast_cash_flow, get_account_metrics
 from app.review.copilot import query_copilot
 from app.review.schemas import ChatRequest, ChatResponse
@@ -166,8 +167,12 @@ def record_decision(
                                 },
                             )
                         )
-            except Exception:
-                pass
+            except Exception as exc:
+                logger.warning(
+                    "account_request_review_processing_failed",
+                    flag_id=flag.id,
+                    error=str(exc),
+                )
 
     decision_record = ReviewDecision(
         flag_id=flag.id,
