@@ -15,6 +15,23 @@ export interface User {
   created_at: string;
 }
 
+export interface AdminUserAccount {
+  id: string;
+  number: string;
+  name: string;
+  balance: number;
+  status: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  role: "admin" | "holder" | "auditor";
+  is_active: boolean;
+  created_at: string;
+  accounts: AdminUserAccount[];
+}
+
 export interface Account {
   id: string;
   number: string;
@@ -25,6 +42,20 @@ export interface Account {
   overdraft_limit: number; // in paise
   status: "active" | "frozen" | "closed";
   created_at: string;
+}
+
+export interface AccountRequestItem {
+  id: string;
+  user_id: string;
+  account_name: string;
+  purpose?: string | null;
+  currency: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+  reviewed_at?: string | null;
+  rejection_reason?: string | null;
+  account_id?: string | null;
+  account_number?: string | null;
 }
 
 export interface StatementItem {
@@ -302,6 +333,28 @@ export const api = {
     return data;
   },
 
+  async register(
+    email: string,
+    password: string,
+    accountName?: string
+  ): Promise<{ token: string; user: User; account: any }> {
+    const { data } = await request<{
+      token: string;
+      expires_at: string;
+      user: User;
+      account: any;
+    }>("/auth/register", {
+      method: "POST",
+      body: JSON.stringify({
+        email,
+        password,
+        account_name: accountName || undefined,
+      }),
+    });
+    setToken(data.token);
+    return data;
+  },
+
   async logout(): Promise<void> {
     try {
       await request("/auth/logout", { method: "POST" });
@@ -428,6 +481,37 @@ export const api = {
     return { result: { ...data, is_replayed: isReplayed }, isReplayed };
   },
 
+  async getAdminUsers(): Promise<AdminUser[]> {
+    const { data } = await request<{ users: AdminUser[] }>("/admin/users");
+    return data.users;
+  },
+
+  async createAdminUser(
+    email: string,
+    password: string,
+    role: "admin" | "holder" | "auditor",
+    accountName?: string
+  ): Promise<AdminUser> {
+    const { data } = await request<AdminUser>("/admin/users", {
+      method: "POST",
+      body: JSON.stringify({
+        email,
+        password,
+        role,
+        account_name: accountName || undefined,
+      }),
+    });
+    return data;
+  },
+
+  async toggleUserStatus(userId: string, isActive: boolean): Promise<AdminUser> {
+    const { data } = await request<AdminUser>(`/admin/users/${userId}/status`, {
+      method: "POST",
+      body: JSON.stringify({ is_active: isActive }),
+    });
+    return data;
+  },
+
   // Audit
   async verifyAudit(): Promise<AuditVerification> {
     const { data } = await request<AuditVerification>("/audit/verify");
@@ -462,6 +546,20 @@ export const api = {
 
   async getAccountInsights(accountId: string): Promise<AccountInsights> {
     const { data } = await request<AccountInsights>(`/review/accounts/${accountId}/insights`);
+    return data;
+  },
+
+  // Account Onboarding Requests
+  async getMyAccountRequests(): Promise<AccountRequestItem[]> {
+    const { data } = await request<{ requests: AccountRequestItem[] }>("/accounts/requests/mine");
+    return data.requests || [];
+  },
+
+  async createAccountRequest(accountName: string, purpose?: string): Promise<AccountRequestItem> {
+    const { data } = await request<AccountRequestItem>("/accounts/requests", {
+      method: "POST",
+      body: JSON.stringify({ account_name: accountName, purpose: purpose || null }),
+    });
     return data;
   },
 };

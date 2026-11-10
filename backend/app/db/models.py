@@ -42,9 +42,7 @@ class User(Base):
     is_active = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    __table_args__ = (
-        CheckConstraint("role IN ('admin', 'holder', 'auditor')", name="valid_user_role"),
-    )
+    __table_args__ = (CheckConstraint("role IN ('admin', 'holder', 'auditor')", name="valid_user_role"),)
 
 
 class SessionModel(Base):
@@ -156,9 +154,7 @@ class RefusedAttempt(Base):
     entry_hash = Column(BYTEA, nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
-    __table_args__ = (
-        UniqueConstraint("account_id", "account_seq", name="uq_refusal_account_seq"),
-    )
+    __table_args__ = (UniqueConstraint("account_id", "account_seq", name="uq_refusal_account_seq"),)
 
 
 class IdempotencyKey(Base):
@@ -224,6 +220,29 @@ class ReviewDecision(Base):
     decided_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
+    __table_args__ = (CheckConstraint("decision IN ('approve', 'dismiss', 'escalate')", name="valid_decision_choice"),)
+
+
+class AccountRequest(Base):
+    __tablename__ = "account_requests"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    account_name = Column(String(128), nullable=False)
+    purpose = Column(Text, nullable=True)
+    currency = Column(String(3), nullable=False, default="INR")
+    status = Column(String(32), nullable=False, default="pending")  # pending, approved, rejected
+    reviewed_by = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    rejection_reason = Column(Text, nullable=True)
+    account_id = Column(UUID(as_uuid=True), ForeignKey("accounts.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    user = relationship("User", foreign_keys=[user_id])
+    reviewer = relationship("User", foreign_keys=[reviewed_by])
+    account = relationship("Account", foreign_keys=[account_id])
+
     __table_args__ = (
-        CheckConstraint("decision IN ('approve', 'dismiss', 'escalate')", name="valid_decision_choice"),
+        CheckConstraint("status IN ('pending', 'approved', 'rejected')", name="valid_account_request_status"),
+        CheckConstraint("currency = 'INR'", name="single_currency_account_request"),
     )
