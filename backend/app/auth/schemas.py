@@ -33,11 +33,11 @@ def validate_email_address(v: Any) -> str:
 
         valid = validate_email(clean, check_deliverability=False, test_environment=True)
         return str(valid.normalized)
-    except Exception:
+    except Exception as err:
         # Fallback for special-use test and internal domains (.test, .internal, .local, .example)
         if clean.endswith((".test", ".internal", ".local", ".localhost", ".example")):
             return clean
-        raise ValueError("value is not a valid email address.")
+        raise ValueError("value is not a valid email address.") from err
 
 
 Email = Annotated[str, BeforeValidator(validate_email_address)]
