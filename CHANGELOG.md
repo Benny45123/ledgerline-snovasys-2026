@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+#### [2026-11-11 21:40 IST] Strict Domain Environment Isolation (`backend/app/accounts/routes.py`, `backend/app/review/routes.py`, `backend/tests/security/test_authorization.py`)
+- Implemented environment-scoped account and user retrieval: `admin@ledgerline.test` only sees clean, pristine `.test` evaluation accounts, while `admin@ledgerline.internal` inspects rich pre-tested accounts with complete transaction history.
+- Enforced uniform 404 access control barrier (`is_account_in_user_scope`) across `get_account`, `get_statement`, `/freeze`, `/unfreeze`, and `/adjust`.
+- Added contractual integration test `test_admin_domain_isolation_test_vs_internal` proving cross-environment 404 barriers.
+
+#### [2026-11-11 20:45 IST] Dual-Domain Account Seeder & RFC 2606 Email Validation (`backend/app/seed/__main__.py`, `backend/app/auth/schemas.py`)
+- Provisioned dual-suite seed architecture: `.internal` (pre-tested accounts with historical activity) and `.test` (fresh clean accounts).
+- Implemented custom Pydantic `Email` validator permitting RFC 2606 special-use domains (`.test`, `.internal`, `.local`, `.localhost`).
+- Added frontend demo preset toggles on the Auth screen with explicit evaluator guidance.
+
+#### [2026-11-11 18:30 IST] Threat L7 State Root Export & Attacker IP Throttle Hardening (`scripts/export_anchor.py`, `backend/app/auth/throttle.py`)
+- Created `scripts/export_anchor.py` and `GET /audit/anchor` computing deterministic composite SHA-256 State Root Anchor over all account chain heads and balances to mitigate Threat L7 (superuser database manipulation).
+- Hardened login throttle: enforced HTTP 429 strictly per attacker IP (`ip_fails >= 15`), while applying progressive exponential response delay on email failures, keeping seed accounts permanently accessible.
+- Added middleware rejecting `Transfer-Encoding: chunked` write requests with HTTP 400 Bad Request to prevent 16 KB body limit bypass.
+
 #### [2026-11-09 11:30 IST] Automated Mutation Testing & Report (`scripts/mutation_check.sh`, `docs/MUTATION_REPORT.md`)
 - Created automated mutation testing harness testing 5 critical invariants (row locking, balance floor check, idempotency claim, append-only triggers, in-transaction membership authorization).
 - Proved 5/5 mutations killed by the test suite, achieving 100% test sensitivity to security regressions.

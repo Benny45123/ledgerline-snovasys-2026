@@ -68,7 +68,18 @@ def list_flags(
     res: list[dict[str, Any]] = []
     target_status = status.lower()
 
+    is_test_admin = current_user.email.lower().endswith(".test")
+    is_internal_admin = current_user.email.lower().endswith(".internal")
+
     for f, dec in rows:
+        # Domain segregation: isolate test from internal flags
+        evidence_str = str(f.evidence or "").lower()
+        narrative_str = (f.narrative or "").lower()
+        if is_test_admin and ("internal" in evidence_str or "(internal)" in narrative_str):
+            continue
+        if is_internal_admin and (".test" in evidence_str or "(test)" in narrative_str):
+            continue
+
         if dec == "approve":
             eff_status = "reviewed"
         elif dec == "dismiss":

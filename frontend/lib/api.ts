@@ -119,6 +119,7 @@ export interface AuditVerification {
   total_journals_verified: number;
   global_balance_sum: number;
   customer_balance_sum: number;
+  state_root?: string;
   discrepancies: Discrepancy[];
 }
 

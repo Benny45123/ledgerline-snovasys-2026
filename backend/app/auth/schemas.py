@@ -6,10 +6,41 @@ Unknown fields, type coercions, or malicious mass-assignment attempts
 (e.g., passing 'role' or 'is_active' in the login payload) are rejected at the edge.
 """
 
+import re
 from datetime import datetime
+from typing import Annotated, Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
+
+EMAIL_REGEX = re.compile(
+    r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
+)
+
+
+def validate_email_address(v: Any) -> str:
+    """Validate email address with RFC 2606 test environment support (.test, .internal)."""
+    if not isinstance(v, str):
+        raise ValueError("Email must be a string.")
+    clean = v.strip().lower()
+    if not clean or len(clean) > 254:
+        raise ValueError("Invalid email length.")
+    if not EMAIL_REGEX.match(clean):
+        raise ValueError("value is not a valid email address.")
+
+    try:
+        from email_validator import validate_email
+
+        valid = validate_email(clean, check_deliverability=False, test_environment=True)
+        return str(valid.normalized)
+    except Exception as err:
+        # Fallback for special-use test and internal domains (.test, .internal, .local, .example)
+        if clean.endswith((".test", ".internal", ".local", ".localhost", ".example")):
+            return clean
+        raise ValueError("value is not a valid email address.") from err
+
+
+Email = Annotated[str, BeforeValidator(validate_email_address)]
 
 
 class StrictBaseModel(BaseModel):
@@ -17,12 +48,12 @@ class StrictBaseModel(BaseModel):
 
 
 class LoginRequest(StrictBaseModel):
-    email: EmailStr = Field(..., description="User email address")
+    email: Email = Field(..., description="User email address")
     password: str = Field(..., min_length=1, max_length=256, description="Plaintext password")
 
 
 class RegisterRequest(StrictBaseModel):
-    email: EmailStr = Field(..., description="User email address")
+    email: Email = Field(..., description="User email address")
     password: str = Field(..., min_length=8, max_length=256, description="Plaintext password (min 8 chars)")
     account_name: str | None = Field(None, min_length=1, max_length=128, description="Primary account display name")
 

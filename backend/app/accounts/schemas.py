@@ -9,7 +9,9 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.auth.schemas import Email
 
 
 class StrictAccountBaseModel(BaseModel):
@@ -70,7 +72,7 @@ class AdminUserListResponse(StrictAccountBaseModel):
 
 
 class AdminCreateUserRequest(StrictAccountBaseModel):
-    email: EmailStr = Field(..., description="User email address")
+    email: Email = Field(..., description="User email address")
     password: str = Field(..., min_length=8, max_length=256, description="Initial plaintext password (min 8 chars)")
     role: str = Field(default="holder", description="User role ('admin', 'holder', or 'auditor')")
     account_name: str | None = Field(default=None, max_length=128, description="Initial account display name")

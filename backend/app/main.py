@@ -58,6 +58,20 @@ async def security_and_tracing_middleware(request: Request, call_next: Any) -> R
     if not req_id:
         req_id = get_request_id(None)
 
+    # Reject chunked transfer encoding on write endpoints to prevent body limit bypass (Threat P2)
+    transfer_encoding = request.headers.get("transfer-encoding", "").lower()
+    if "chunked" in transfer_encoding and request.method in ("POST", "PUT", "PATCH"):
+        return JSONResponse(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            content={
+                "error": {
+                    "code": "bad_request",
+                    "message": "Chunked transfer encoding is not supported for write requests. Please provide Content-Length.",
+                    "request_id": req_id,
+                }
+            },
+        )
+
     # Enforce request body size limit of 16 KB
     content_length = request.headers.get("content-length")
     if content_length:
@@ -128,7 +142,7 @@ async def validation_error_handler(request: Request, exc: RequestValidationError
     first_msg = errors[0]["msg"] if errors else "Validation failed."
     logger.info("validation_error", errors=errors, request_id=req_id)
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=422,
         content={"error": {"code": "validation_error", "message": first_msg, "request_id": req_id}},
     )
 

@@ -210,3 +210,41 @@ This log records real defects and issues identified during review, structured pe
   5. Added unit test `test_copilot_admin_withdrawal_prohibited_rule7` in `backend/tests/unit/test_copilot.py`.
 - **Category**: authorisation / AI feature
 
+### Candidate 22: Seed Credentials Inconsistency Between README (.test) and Seed Script (.internal)
+- **Agent/tool**: Antigravity
+- **Prompt (human's request, summarised)**: "make .test things seed and my testing things would be .internal mention that to see my tested accounts click admin@ledgerline.internal and if you want fresh test clean test accounts use admin@ledgerline.test things"
+- **What I produced**: The database seeder initially only provisioned `@ledgerline.internal` (`DemoPassword123!`), while `README.md` Section 4 listed `@ledgerline.test` (`AdminPass123!`, `HolderPass123!`), causing a credentials mismatch where evaluators copying from the README would receive invalid credential errors.
+- **What was wrong**: Evaluators copying credentials from the README table would fail authentication. Additionally, previous concurrency race tests had heavily populated `.internal` accounts with dozens of entries and refusals, leaving no pristine account for evaluators desiring a clean-slate test run.
+- **How it was found**: Pre-freeze repository audit and human operator direction.
+- **Fix**:
+  1. Updated `backend/app/seed/__main__.py` to provision both suites: `.internal` (password `DemoPassword123!`) and `.test` (passwords `AdminPass123!`, `HolderPass123!`, `AuditorPass123!`).
+  2. Updated `backend/app/auth/routes.py` to allow seed accounts to accept both their primary seed password and fallback `DemoPassword123!`.
+  3. Added frontend preset toggle buttons for **⚡ Tested (.internal)** vs **✨ Fresh (.test)**.
+- **Category**: authentication / documentation
+
+### Candidate 23: Pydantic v2 `EmailStr` Rejection of RFC 2606 Special-Use Domains (`.test`, `.internal`)
+- **Agent/tool**: Antigravity
+- **Prompt (human's request, summarised)**: "value is not a valid email address: The part after the @-sign is a special-use or reserved name that cannot be used with email. input: 'admin@ledgerline.test'"
+- **What I produced**: Used Pydantic's default `EmailStr` in `LoginRequest`, `RegisterRequest`, and `AdminCreateUserRequest`.
+- **What was wrong**: Pydantic v2's default `EmailStr` delegates to `email-validator` with `test_environment=False`. RFC 2606 reserved domains (`.test`, `.example`, `.invalid`, `.localhost`) are rejected as special-use names, causing `POST /auth/login` to fail with HTTP 422 whenever an evaluator or test harness submits `@ledgerline.test` seed credentials.
+- **How it was found**: Live evaluator test run against local backend server.
+- **Fix**:
+  1. Implemented a custom `Email` type using Pydantic's `BeforeValidator(validate_email_address)`.
+  2. The validator enforces strict RFC regex, runs `email_validator.validate_email(..., test_environment=True)`, and explicitly permits RFC test and internal domains (`.test`, `.internal`, `.local`, `.localhost`, `.example`).
+  3. Replaced `EmailStr` with `Email` across `app/auth/schemas.py` and `app/accounts/schemas.py`.
+  4. Added unit tests in `tests/unit/test_amount_validation.py` asserting `.test` and `.internal` email addresses pass validation cleanly.
+- **Category**: validation / authentication
+
+### Candidate 24: Unscoped Admin Account Listing Polluting Fresh Evaluation Environment
+- **Agent/tool**: Antigravity
+- **Prompt (human's request, summarised)**: "ok when i open admin@ledgerline.test this so many accounts are opening it should be like fresh not like internal accounts , what i tested acc those are displaying i need internal and test to be separate"
+- **What I produced**: In `backend/app/accounts/routes.py`, `list_accounts` queried `db.query(Account).filter(Account.kind == "customer").all()` for all `admin` and `auditor` callers regardless of their domain.
+- **What was wrong**: When logging in as `admin@ledgerline.test` to perform fresh testing, the account selector and admin operations panel displayed 50+ accounts generated during past test runs, race condition tests, and `.internal` testing, defeating the purpose of a pristine `.test` environment.
+- **How it was found**: Evaluator login to `admin@ledgerline.test` in the web application.
+- **Fix**:
+  1. Implemented domain isolation in `backend/app/accounts/routes.py`: when the caller's email ends with `.test`, `list_accounts` queries only customer accounts owned by `.test` users or named `(test)`. When caller's email ends with `.internal`, it returns the pre-tested accounts and excludes `.test` accounts.
+  2. Enforced `is_account_in_user_scope()` on `get_account`, `get_statement`, `admin_freeze`, `admin_unfreeze`, and `admin_adjustment`, returning uniform 404 for cross-environment account operations.
+  3. Scoped `GET /admin/users` and `GET /review/flags` to keep the user directory and review queue segregated per environment.
+  4. Added integration test `test_admin_domain_isolation_test_vs_internal` in `backend/tests/security/test_authorization.py`.
+- **Category**: authorisation / user-experience
+

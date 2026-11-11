@@ -28,6 +28,22 @@ def run_verify(
     return verify_ledger_integrity(db)
 
 
+@router.get("/anchor")
+def get_anchor(
+    current_user: User = Depends(require_role("admin", "auditor")),
+    db: Session = Depends(get_db),
+) -> dict[str, Any]:
+    """Retrieve the cryptographic state root anchor (Threat L7 mitigation)."""
+    report = verify_ledger_integrity(db)
+    return {
+        "state_root": report.state_root,
+        "verified": report.verified,
+        "total_accounts": report.total_accounts_checked,
+        "total_entries": report.total_entries_verified,
+        "global_balance_sum": report.global_balance_sum,
+    }
+
+
 @router.get("/replays")
 def list_replays(
     limit: int = 50,

@@ -120,3 +120,31 @@ def test_adjustment_request_invalid_uuid_rejected() -> None:
             }
         )
     assert "Invalid UUID format" in str(exc_info.value)
+
+
+def test_test_domain_email_accepted() -> None:
+    """Prove that RFC 2606 test domains (.test, .internal) are accepted."""
+    from app.auth.schemas import LoginRequest, RegisterRequest
+
+    login_test = LoginRequest(email="admin@ledgerline.test", password="AdminPass123!")
+    assert login_test.email == "admin@ledgerline.test"
+
+    login_internal = LoginRequest(email="holder1@ledgerline.internal", password="DemoPassword123!")
+    assert login_internal.email == "holder1@ledgerline.internal"
+
+    reg_test = RegisterRequest(email="newuser@eval.test", password="StrongPassword123!")
+    assert reg_test.email == "newuser@eval.test"
+
+
+def test_malformed_email_rejected() -> None:
+    """Prove that invalid email formats are strictly rejected with ValidationError."""
+    from app.auth.schemas import LoginRequest
+
+    with pytest.raises(ValidationError):
+        LoginRequest.model_validate({"email": "not-an-email", "password": "Password123!"})
+
+    with pytest.raises(ValidationError):
+        LoginRequest.model_validate({"email": "@domain.com", "password": "Password123!"})
+
+    with pytest.raises(ValidationError):
+        LoginRequest.model_validate({"email": "user@", "password": "Password123!"})

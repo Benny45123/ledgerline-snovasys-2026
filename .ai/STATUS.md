@@ -93,9 +93,29 @@
   - Zero-account state: newly registered users see clean default zeros across all KPIs (`₹0.00` balance, `+₹0.00` credits, `−₹0.00` debits, `0` refusals) and an interactive 3-step Fintech Onboarding Status Stepper card (`🟡 APPLICATION UNDER REVIEW`).
   - Admin Review Queue: reviews the onboarding flag with zero UI bloat ("Suggestions only. A person decides, and the decision is recorded. No flags waiting for review.").
   - Approval / Dismissal: approving automatically provisions the double-entry customer vault via `create_customer_account` in an atomic transaction, activates the vault with `₹0.00` ready for transfers and statements, records an append-only `ReviewDecision`, and logs audit trail `SecurityEvent`.
-  - Automated integration test `backend/tests/integration/test_account_onboarding_approval.py` passes completely (2/2 tests green).
+- [x] Dual-Domain Account Seeding & Evaluator Isolation (`backend/app/seed/__main__.py`, `frontend/app/app/page.tsx`, `frontend/app/app/app.css`, `README.md`):
+  - Provisioned two distinct seed account suites:
+    1. **Pre-tested accounts (`@ledgerline.internal`)**: Preserves extensive test suite run histories, statements, 12-day movement charts, and recorded refusals.
+    2. **Fresh evaluation accounts (`@ledgerline.test`)**: Clean-slate accounts with zero transaction noise, ideal for evaluators to test invariants from scratch.
+  - Added an interactive **⚡ Tested (.internal)** vs **✨ Fresh (.test)** environment switcher in the auth screen demo presets box with contextual guidance.
+  - Aligned [README.md](file:///workspace/README.md) Section 4 with comprehensive tables and explanations for both sets.
+- [x] Threat Model & Hardening Improvements (`THREATS.md`, `SECURITY_DEFENSES_AND_THREATS.md`, `scripts/export_anchor.py`, `backend/app/main.py`, `backend/app/auth/throttle.py`):
+  - **Threat L7 Mitigation Script (`scripts/export_anchor.py`)**: Exports deterministic composite State Root Anchor (SHA-256 over all account heads and balances) to detect full-database superuser history manipulation.
+  - **Login Throttle Hardening (`backend/app/auth/throttle.py`)**: Enforced 429 rate limit strictly on attacker IP failures (`ip_fails >= 15`) and progressive delay on email failures, preventing external attackers from locking out evaluators on shared seed accounts.
+  - **Chunked Body Limit Guard (`backend/app/main.py`)**: Middleware rejects `Transfer-Encoding: chunked` write requests with HTTP 400 Bad Request to prevent 16 KB body limit bypass; covered by unit test in `test_error_shape.py`.
+- [x] Synchronized root [UNFINISHED.md](file:///workspace/UNFINISHED.md) and [docs/UNFINISHED.md](file:///workspace/docs/UNFINISHED.md) to accurately document the completed BalanceVault onboarding flow and deliberate architectural scope cuts.
 
-- None (all planned deliverables completed).
+- [x] Strict Domain Environment Isolation (`backend/app/accounts/routes.py`, `backend/app/review/routes.py`, `backend/tests/security/test_authorization.py`, `frontend/app/app/page.tsx`):
+  - Solved evaluator noise by strictly separating `.test` (fresh clean accounts) from `.internal` (tested accounts with race history):
+    - `GET /accounts`: When called by an admin or auditor with `.test` email (`admin@ledgerline.test`), returns strictly clean evaluation accounts associated with `.test`. When called by `.internal` (`admin@ledgerline.internal`), returns all pre-tested accounts with historical transaction traces.
+    - `GET /accounts/{id}`, `GET /accounts/{id}/statement`, `/freeze`, `/unfreeze`, `/adjust`: Strict 404 barrier preventing cross-environment manipulation between `.test` and `.internal`.
+    - `GET /admin/users` & `/status`: Admin user directory and status management strictly scoped to the active domain environment.
+    - `GET /review/flags`: Review queue dynamically segregates `.internal` transaction anomalies from fresh `.test` evaluation flags.
+    - Contractual verification: Added `test_admin_domain_isolation_test_vs_internal` in `backend/tests/security/test_authorization.py`.
+    - Frontend: Updated demo presets hint to guide evaluators clearly: `admin@ledgerline.internal` to view pre-tested history; `admin@ledgerline.test` to test fresh money movements with zero clutter.
+
+## In Progress
+- None.
 
 ## Blocked
 - None.

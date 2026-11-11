@@ -149,12 +149,31 @@ sequenceDiagram
 
 Authentication uses Argon2id password hashing and 256-bit cryptographically secure opaque bearer tokens. Foreign account lookups return uniform `404 Not Found` (never 403) to eliminate account enumeration attacks.
 
-| Role | Seed Email | Password | Allowed Capabilities |
+The database seeds two dedicated account environments:
+1. **Fresh Clean Accounts (`@ledgerline.test`)**: Pristine balances intended for evaluators to test deposits, withdrawals, and transfers from a clean slate.
+2. **Pre-Tested Accounts (`@ledgerline.internal`)**: Pre-populated accounts containing rich transaction activity, 12-day movement charts, refusal records, and administrative review flags from extensive test suites.
+
+### Set A: Fresh / Clean Evaluation Accounts (`.test`)
+> *Use these accounts for clean-slate testing, verifying invariants, and initiating fresh transfers.*
+
+| Role | Email | Password | Allowed Capabilities |
 | :--- | :--- | :--- | :--- |
-| **`admin`** | `admin@ledgerline.test` | `AdminPass123!` | Create accounts, freeze/unfreeze accounts, execute system adjustments against SUSPENSE. Cannot spend user money. |
-| **`holder`** | `holder1@ledgerline.test` | `HolderPass123!` | Deposit, withdraw, transfer between owned accounts, inspect keyset-paginated statements. |
-| **`holder`** | `holder2@ledgerline.test` | `HolderPass123!` | Counterparty account for transfer verification. |
+| **`admin`** | `admin@ledgerline.test` | `AdminPass123!` | User lifecycle, account onboarding approval, freeze/unfreeze accounts, system adjustments against SUSPENSE. |
+| **`holder`** | `holder1@ledgerline.test` | `HolderPass123!` | Primary customer vault: Deposit, withdraw, transfer between accounts, inspect keyset statements. |
+| **`holder`** | `holder2@ledgerline.test` | `HolderPass123!` | Counterparty customer vault for cross-account transfer verification. |
 | **`auditor`** | `auditor@ledgerline.test` | `AuditorPass123!` | Strictly read-only. Inspect ledger entries, call `/audit/verify`, inspect replay logs. All POST/PUT routes return 403. |
+
+### Set B: Pre-Tested Accounts with Historical Activity (`.internal`)
+> *Use these accounts to immediately inspect populated dashboard charts, keyset statements with refused attempts, and the AI Review Queue.*
+
+| Role | Email | Password | Description / Context |
+| :--- | :--- | :--- | :--- |
+| **`admin`** | `admin@ledgerline.internal` | `DemoPassword123!` | Access to the AI Review Queue with pending onboarding requests and surveillance flags. |
+| **`holder`** | `holder1@ledgerline.internal` | `DemoPassword123!` | Populated 12-day net movement chart, Dr/Cr entries, and recorded insufficient funds refusals. |
+| **`holder`** | `holder2@ledgerline.internal` | `DemoPassword123!` | Active counterparty vault with multiple incoming and outgoing ledger entries. |
+| **`auditor`** | `auditor@ledgerline.internal` | `DemoPassword123!` | Direct read-only inspection of the complete multi-entry cryptographic audit log. |
+
+> 💡 **UI Tip**: In the web application login screen, toggle between **⚡ Tested (.internal)** and **✨ Fresh (.test)** in the Demo Presets box to instantly auto-fill credentials for either environment.
 
 ---
 
