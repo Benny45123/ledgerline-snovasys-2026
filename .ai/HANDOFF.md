@@ -1,6 +1,40 @@
 # Agent Handoff Notes
 
-### Latest: 2026-11-10 21:30 IST — Institutional Account Request & Admin Approval Workflow
+### Latest: 2026-11-11 21:40 IST — Strict Domain Environment Isolation (.test vs .internal)
+- **Refinement Delivered**:
+  - **Account & Environment Segregation (`backend/app/accounts/routes.py`, `backend/app/review/routes.py`)**:
+    - Addressed evaluator UX friction where opening `admin@ledgerline.test` displayed 50+ test-run accounts from prior stress/concurrency runs.
+    - `list_accounts`: When called by an admin or auditor with `.test` domain (`admin@ledgerline.test`), queries only customer accounts linked to `.test` users or named `(test)`. When called by `.internal` (`admin@ledgerline.internal`), queries accounts belonging to the pre-tested environment and excludes clean `.test` accounts.
+    - `get_account`, `get_statement`, `admin_freeze`, `admin_unfreeze`, `admin_adjustment`: Enforced `is_account_in_user_scope()` barrier returning uniform 404 for any cross-environment account lookup or mutation.
+    - `admin_list_users` & `admin_toggle_user_status`: Scoped user directory queries to the caller's active domain environment (`.test` admin sees clean `.test` users only).
+    - `list_flags`: Segregated Review Queue flags so `.test` admins are not distracted by `.internal` stress-test flags.
+  - **Contractual Automated Testing (`backend/tests/security/test_authorization.py`)**:
+    - Added `test_admin_domain_isolation_test_vs_internal` proving that `.test` admin can only list and inspect `.test` accounts, and `.internal` admin can only list and inspect `.internal` accounts, with reciprocal 404 enforcement.
+  - **Frontend Guidance (`frontend/app/app/page.tsx`)**:
+    - Updated demo preset captions on Auth screen to explicitly instruct evaluators:
+      - ⚡ Tested accounts (`.internal`): Contains pre-populated history, refusals, and stress-test activity. Sign in as `admin@ledgerline.internal`.
+      - ✨ Fresh clean accounts (`.test`): Pristine evaluation accounts isolated from test data. Sign in as `admin@ledgerline.test`.
+- **Files Touched**:
+  - `backend/app/accounts/routes.py`, `backend/app/review/routes.py`, `backend/tests/security/test_authorization.py`, `frontend/app/app/page.tsx`, `.ai/STATUS.md`, `.ai/HANDOFF.md`.
+
+### Previous: 2026-11-11 21:05 IST — Dual-Domain Evaluator Seeding, Threat L7 State Root Export, & Throttle Hardening
+- **Refinements Delivered**:
+  - **Dual-Domain Account Seeding (`backend/app/seed/__main__.py`, `README.md`)**:
+    - Pre-tested suite (`@ledgerline.internal`, pwd `DemoPassword123!`): contains extensive test suite histories, 12-day Net Movement charts, refusal events, and active flags.
+    - Clean evaluation suite (`@ledgerline.test`, pwd `AdminPass123!`, `HolderPass123!`, `AuditorPass123!`): pristine, untouched accounts for judges to test fresh transfers without historical noise.
+  - **Auth Screen Presets UI (`frontend/app/app/page.tsx`, `frontend/app/app/app.css`)**:
+    - Added interactive **⚡ Tested (.internal)** vs **✨ Fresh (.test)** environment toggles to the Demo Presets card with contextual guidance.
+  - **Threat L7 Mitigation (`scripts/export_anchor.py`, `THREATS.md`)**:
+    - Created utility to compute and print the composite State Root Anchor (SHA-256 over all account chain heads and balances) to detect superuser database rewrites.
+  - **Login Throttle Hardening (`backend/app/auth/throttle.py`, `SECURITY_DEFENSES_AND_THREATS.md`)**:
+    - Enforced HTTP 429 strictly per attacker IP, while using progressive response delay on email failures, preventing external attackers from locking out evaluators on shared seed accounts.
+  - **Body Limit Hardening (`backend/app/main.py`, `backend/tests/unit/test_error_shape.py`)**:
+    - Middleware rejects `Transfer-Encoding: chunked` write requests with HTTP 400 Bad Request to prevent 16 KB body limit bypass.
+  - **Documentation Sync**: Synchronized root `UNFINISHED.md` and `docs/UNFINISHED.md`.
+- **Files Touched**:
+  - `backend/app/seed/__main__.py`, `frontend/app/app/page.tsx`, `frontend/app/app/app.css`, `README.md`, `UNFINISHED.md`, `docs/UNFINISHED.md`, `scripts/export_anchor.py`, `THREATS.md`, `SECURITY_DEFENSES_AND_THREATS.md`, `backend/app/main.py`, `backend/app/auth/throttle.py`, `backend/tests/unit/test_error_shape.py`.
+
+### Previous: 2026-11-10 21:30 IST — Institutional Account Request & Admin Approval Workflow
 - **Refinement Delivered**:
   - Implemented the end-to-end "Account Request -> Admin Approval" onboarding pipeline across backend and frontend:
     - `POST /auth/register`: Users register without unvetted bank accounts. An `AccountRequest` row (`status="pending"`) and an `account_request` review flag (`severity="medium"`, `status="open"`) are recorded, returning `account=None`.

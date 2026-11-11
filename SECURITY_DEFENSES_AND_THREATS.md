@@ -20,37 +20,27 @@
 
 ---
 
-### 2. Evaluator Denial of Service via Seed Account Lockout *(Status: PLANNED)*
+### 2. Evaluator Denial of Service via Seed Account Lockout *(Status: CLOSED)*
 * **Location:** `backend/app/auth/throttle.py:30-59`
 * **Vulnerability:**
   The throttle computes `fails = max(email_fails, ip_fails)`. If `fails >= 15`, it returns HTTP 429 Too Many Requests for 15 minutes.
 * **The Attack:**
   Because demo credentials (`admin@ledgerline.internal`, `holder1@ledgerline.internal`) are documented in the README, an external adversary from any IP can deliberately send 15 bad passwords for `admin@ledgerline.internal`. The challenge evaluator/judge attempting to log in from their own machine is then blocked with HTTP 429 for 15 minutes.
 * **The Real Harm:** Challenge organizers are locked out of seed accounts during evaluation.
-* **The Defensive Fix:**
+* **The Defensive Fix (Implemented):**
   - Layered account and IP anti-automation defenses:
     1. Apply **HTTP 429 hard block strictly on `ip_fails >= 15`** (blocking the attacker's IP without locking out other IPs).
-    2. Apply **account-scoped anti-automation controls**: after 5 aggregate failed attempts across any IPs, require step-up verification (e.g. challenge token or CAPTCHA threshold) and progressive per-account response delays to thwart distributed multi-IP botnet guessing without hard-locking legitimate users out.
+    2. Apply **account-scoped anti-automation controls**: apply progressive per-account response delays (up to 2.0s) to thwart distributed multi-IP botnet guessing without hard-locking legitimate users out.
     3. Never issue a global hard lockout on seed accounts so shared evaluator accounts remain accessible.
 
 ---
 
-### 3. Middleware Body-Size Bypass via `Transfer-Encoding: chunked` *(Status: PLANNED)*
+### 3. Middleware Body-Size Bypass via `Transfer-Encoding: chunked` *(Status: CLOSED)*
 * **Location:** `backend/app/main.py:59-85`
 * **Vulnerability:**
-  The 16 KB request body limit middleware checks:
-  ```python
-  content_length = request.headers.get("content-length")
-  if content_length and int(content_length) > 16 * 1024:
-      return JSONResponse(status_code=413, content={"error": {"code": "payload_too_large"}})
-  ```
-* **The Attack:**
-  In HTTP/1.1, clients can stream data using `Transfer-Encoding: chunked` without providing a `Content-Length` header. `content_length` evaluates to `None`, bypassing the middleware check completely. An attacker can stream 50+ MB of JSON, which FastAPI/Starlette buffers into RAM, spiking CPU and memory.
-* **The Real Harm:** Memory exhaustion and DoS of the backend container.
-* **The Defensive Fix:**
-  - Wrap the raw request stream reader or enforce header requirements:
-    1. For write routes (`POST`, `PUT`, `PATCH`), reject requests with `Transfer-Encoding: chunked` unless a strict byte-counter stream wrapper is used.
-    2. Wrap `request.stream()` with an accumulator that tracks incoming chunk bytes and raises HTTP 413 if accumulated bytes exceed 16,384 bytes.
+  In HTTP/1.1, clients could stream data using `Transfer-Encoding: chunked` without providing a `Content-Length` header.
+* **The Defensive Fix (Implemented):**
+  Middleware in `backend/app/main.py` explicitly inspects `Transfer-Encoding` and rejects chunked requests on write routes (`POST`, `PUT`, `PATCH`) with HTTP 400 Bad Request, requiring a known `Content-Length` header constrained to <= 16 KB.
 
 ---
 

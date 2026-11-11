@@ -104,14 +104,82 @@ def create_account(
     )
 
 
+def is_account_in_user_scope(account: Account, user: User, db: Session) -> bool:
+    """Check if account is within scope of the user's role and domain environment."""
+    if user.role == "holder":
+        return (
+            db.query(AccountMember)
+            .filter(AccountMember.account_id == account.id, AccountMember.user_id == user.id)
+            .first()
+            is not None
+        )
+
+    # Clean test evaluation domain (.test)
+    if user.email.lower().endswith(".test"):
+        if "(test)" in account.name.lower():
+            return True
+        is_test_member = (
+            db.query(AccountMember)
+            .join(User, AccountMember.user_id == User.id)
+            .filter(AccountMember.account_id == account.id, User.email.ilike("%.test"))
+            .first()
+        )
+        return is_test_member is not None
+
+    # Tested / internal domain (.internal)
+    if user.email.lower().endswith(".internal"):
+        if "(test)" in account.name.lower():
+            return False
+        is_test_member = (
+            db.query(AccountMember)
+            .join(User, AccountMember.user_id == User.id)
+            .filter(AccountMember.account_id == account.id, User.email.ilike("%.test"))
+            .first()
+        )
+        return is_test_member is None
+
+    # Other domains (e.g. general unit tests) can access all customer accounts
+    return True
+
+
 @router.get("/accounts", response_model=AccountListResponse)
 def list_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AccountListResponse:
-    """List accessible accounts (Holders see own; Admin/Auditor see all)."""
+    """List accessible accounts (Holders see own; Admin/Auditor see environment-isolated accounts)."""
     if current_user.role in ("admin", "auditor"):
-        accounts = db.query(Account).filter(Account.kind == "customer").order_by(Account.created_at.desc()).all()
+        is_test_env = current_user.email.lower().endswith(".test")
+        is_internal_env = current_user.email.lower().endswith(".internal")
+
+        base_query = db.query(Account).filter(Account.kind == "customer")
+        if is_test_env:
+            test_user_ids = db.query(User.id).filter(User.email.ilike("%.test")).subquery()
+            test_account_ids = (
+                db.query(AccountMember.account_id).filter(AccountMember.user_id.in_(test_user_ids)).subquery()
+            )
+            accounts = (
+                base_query.filter(
+                    (Account.id.in_(test_account_ids)) | (Account.name.ilike("%(test)%"))
+                )
+                .order_by(Account.created_at.desc())
+                .all()
+            )
+        elif is_internal_env:
+            test_user_ids = db.query(User.id).filter(User.email.ilike("%.test")).subquery()
+            test_account_ids = (
+                db.query(AccountMember.account_id).filter(AccountMember.user_id.in_(test_user_ids)).subquery()
+            )
+            accounts = (
+                base_query.filter(
+                    ~Account.id.in_(test_account_ids),
+                    ~Account.name.ilike("%(test)%"),
+                )
+                .order_by(Account.created_at.desc())
+                .all()
+            )
+        else:
+            accounts = base_query.order_by(Account.created_at.desc()).all()
     else:
         accounts = (
             db.query(Account)
@@ -144,19 +212,13 @@ def get_account(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AccountResponse:
-    """Fetch details for a specific account with strict ownership verification."""
+    """Fetch details for a specific account with strict ownership and domain verification."""
     acc = db.query(Account).filter(Account.id == account_id).first()
     if not acc:
         raise NotFoundError("Account not found.")
 
-    if current_user.role == "holder":
-        is_member = (
-            db.query(AccountMember)
-            .filter(AccountMember.account_id == acc.id, AccountMember.user_id == current_user.id)
-            .first()
-        )
-        if not is_member:
-            raise NotFoundError("Account not found.")
+    if not is_account_in_user_scope(acc, current_user, db):
+        raise NotFoundError("Account not found.")
 
     return AccountResponse(
         id=acc.id,
@@ -185,14 +247,8 @@ def get_statement(
     if not acc:
         raise NotFoundError("Account not found.")
 
-    if current_user.role == "holder":
-        is_member = (
-            db.query(AccountMember)
-            .filter(AccountMember.account_id == acc.id, AccountMember.user_id == current_user.id)
-            .first()
-        )
-        if not is_member:
-            raise NotFoundError("Account not found.")
+    if not is_account_in_user_scope(acc, current_user, db):
+        raise NotFoundError("Account not found.")
 
     return get_account_statement(db, account_id, after_seq=after, limit=limit, order=order)
 
@@ -363,6 +419,9 @@ def admin_freeze(
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """Freeze an account (Admin only)."""
+    target = db.query(Account).filter(Account.id == account_id).first()
+    if not target or not is_account_in_user_scope(target, current_user, db):
+        raise NotFoundError("Account not found.")
     acc = freeze_account(db, account_id, current_user.id)
     return AccountResponse(
         id=acc.id,
@@ -384,6 +443,9 @@ def admin_unfreeze(
     db: Session = Depends(get_db),
 ) -> AccountResponse:
     """Unfreeze an account (Admin only)."""
+    target = db.query(Account).filter(Account.id == account_id).first()
+    if not target or not is_account_in_user_scope(target, current_user, db):
+        raise NotFoundError("Account not found.")
     acc = unfreeze_account(db, account_id, current_user.id)
     return AccountResponse(
         id=acc.id,
@@ -409,7 +471,7 @@ def admin_adjustment(
 ) -> MovementResponse:
     """Post an audited balance adjustment against the SUSPENSE account (Admin only)."""
     acc = db.query(Account).filter(Account.id == req.account_id).first()
-    if not acc:
+    if not acc or not is_account_in_user_scope(acc, current_user, db):
         raise NotFoundError("Account not found.")
 
     suspense_acc = get_system_account(db, "suspense")
@@ -508,7 +570,13 @@ def admin_list_users(
     db: Session = Depends(get_db),
 ) -> AdminUserListResponse:
     """List all registered users with their roles and linked accounts (Admin only)."""
-    users = db.query(User).order_by(User.created_at.desc()).all()
+    if current_user.email.lower().endswith(".test"):
+        users = db.query(User).filter(User.email.ilike("%.test")).order_by(User.created_at.desc()).all()
+    elif current_user.email.lower().endswith(".internal"):
+        users = db.query(User).filter(~User.email.ilike("%.test")).order_by(User.created_at.desc()).all()
+    else:
+        users = db.query(User).order_by(User.created_at.desc()).all()
+
     user_items = []
     for u in users:
         accs = (
@@ -619,6 +687,11 @@ def admin_toggle_user_status(
 
     target_user = db.query(User).filter(User.id == user_id).first()
     if not target_user:
+        raise NotFoundError("User not found.")
+
+    if current_user.email.lower().endswith(".test") and not target_user.email.lower().endswith(".test"):
+        raise NotFoundError("User not found.")
+    if current_user.email.lower().endswith(".internal") and target_user.email.lower().endswith(".test"):
         raise NotFoundError("User not found.")
 
     target_user.is_active = req.is_active

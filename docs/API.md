@@ -313,7 +313,23 @@ All four money movement endpoints below invoke `app/ledger/service.py::post_move
     "total_journals_verified": 118,
     "global_balance_sum": 0,
     "customer_balance_sum": 1500000,
+    "state_root": "8f3b4c...",
     "discrepancies": []
+  }
+  ```
+
+### `GET /audit/anchor`
+- **Allowed Callers**: `admin`, `auditor`.
+- **Effect on Money**: None (Threat L7 external cryptographic anchoring).
+- **What It Computes**: Deterministic SHA-256 state root digest across all account chain heads and balances to detect full-database superuser tampering outside PostgreSQL.
+- **Response (200 OK)**:
+  ```json
+  {
+    "state_root": "8f3b4c12e56...",
+    "verified": true,
+    "total_accounts": 53,
+    "total_entries": 235,
+    "global_balance_sum": 0
   }
   ```
 

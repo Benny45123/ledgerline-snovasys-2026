@@ -21,13 +21,23 @@ from app.db.engine import SessionLocal
 from app.db.models import AccountMember, User
 from app.ledger.service import post_movement
 
-DEMO_PASSWORD = "DemoPassword123!"  # nosec B105
-
+# Pre-populated / tested accounts (with historical activity) and fresh clean evaluation accounts
 SEED_USERS = [
-    ("admin@ledgerline.internal", "admin"),
-    ("holder1@ledgerline.internal", "holder"),
-    ("holder2@ledgerline.internal", "holder"),
-    ("auditor@ledgerline.internal", "auditor"),
+    ("admin@ledgerline.internal", "admin", "DemoPassword123!"),
+    ("holder1@ledgerline.internal", "holder", "DemoPassword123!"),
+    ("holder2@ledgerline.internal", "holder", "DemoPassword123!"),
+    ("auditor@ledgerline.internal", "auditor", "DemoPassword123!"),
+    ("admin@ledgerline.test", "admin", "AdminPass123!"),
+    ("holder1@ledgerline.test", "holder", "HolderPass123!"),
+    ("holder2@ledgerline.test", "holder", "HolderPass123!"),
+    ("auditor@ledgerline.test", "auditor", "AuditorPass123!"),
+]
+
+HOLDERS_TO_PROVISION = [
+    "holder1@ledgerline.internal",
+    "holder2@ledgerline.internal",
+    "holder1@ledgerline.test",
+    "holder2@ledgerline.test",
 ]
 
 
@@ -40,13 +50,13 @@ def seed_database(db: Session | None = None) -> None:
 
     try:
         user_map = {}
-        for email, role in SEED_USERS:
+        for email, role, password in SEED_USERS:
             user = db.query(User).filter(User.email == email).first()
             if not user:
                 user = User(
                     id=uuid.uuid4(),
                     email=email,
-                    password_hash=hash_password(DEMO_PASSWORD),
+                    password_hash=hash_password(password),
                     role=role,
                     is_active=True,
                 )
@@ -54,6 +64,12 @@ def seed_database(db: Session | None = None) -> None:
                 db.commit()
                 db.refresh(user)
                 print(f"Created user: {email} ({role})")
+            else:
+                user.password_hash = hash_password(password)
+                user.role = role
+                user.is_active = True
+                db.commit()
+                print(f"Synchronized user credentials: {email} ({role})")
             user_map[email] = user
 
         # System accounts
@@ -61,23 +77,27 @@ def seed_database(db: Session | None = None) -> None:
         susp_acc = get_system_account(db, "suspense")
         print(f"Verified system accounts: {ext_acc.number}, {susp_acc.number}")
 
-        # Seed 2 accounts for holder1 and 2 accounts for holder2
-        for holder_key in ("holder1@ledgerline.internal", "holder2@ledgerline.internal"):
-            holder = user_map[holder_key]
+        # Seed 2 accounts for each holder
+        for holder_key in HOLDERS_TO_PROVISION:
+            holder = user_map.get(holder_key)
+            if not holder:
+                continue
             existing_memberships = db.query(AccountMember).filter(AccountMember.user_id == holder.id).all()
 
             if not existing_memberships:
                 # Account 1: Operating
+                domain_tag = "internal" if "internal" in holder_key else "test"
+                prefix = holder.email.split("@")[0]
                 acc1 = create_customer_account(
                     db=db,
-                    name=f"{holder.email.split('@')[0]} Operating",
+                    name=f"{prefix} Operating ({domain_tag})",
                     owner_user_id=holder.id,
                     overdraft_limit=0,
                 )
                 # Account 2: Reserve with overdraft limit
                 acc2 = create_customer_account(
                     db=db,
-                    name=f"{holder.email.split('@')[0]} Reserve",
+                    name=f"{prefix} Reserve ({domain_tag})",
                     owner_user_id=holder.id,
                     overdraft_limit=5000000,  # ₹50,000 overdraft
                 )

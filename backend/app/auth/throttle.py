@@ -53,11 +53,12 @@ def check_login_throttle(db: Session, email: str, ip: str | None) -> None:
             or 0
         )
 
+    # IP-level rate limiting blocks aggressive brute-force originators without locking out shared seed accounts
+    if ip and ip_fails >= MAX_ATTEMPTS_BEFORE_429:
+        raise RateLimitedError(message="Too many failed login attempts from this IP address. Please wait 15 minutes before retrying.")
+
+    # Email & IP-level progressive delay slows down credential guessing without locking out evaluators
     fails = max(email_fails, ip_fails)
-
-    if fails >= MAX_ATTEMPTS_BEFORE_429:
-        raise RateLimitedError(message="Too many failed login attempts. Please wait 15 minutes before retrying.")
-
     if fails >= MAX_ATTEMPTS_BEFORE_DELAY:
         delay = min(2.0, (fails - MAX_ATTEMPTS_BEFORE_DELAY + 1) * 0.25)
         time.sleep(delay)

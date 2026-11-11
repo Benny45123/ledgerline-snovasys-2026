@@ -68,6 +68,7 @@ export default function AppPage() {
   const [authEmail, setAuthEmail] = useState(DEMO ? "holder1@ledgerline.internal" : "");
   const [authPassword, setAuthPassword] = useState(DEMO ? "DemoPassword123!" : "");
   const [authRole, setAuthRole] = useState<"holder" | "admin" | "auditor">("holder");
+  const [demoEnv, setDemoEnv] = useState<"internal" | "test">("internal");
   const [authAccountName, setAuthAccountName] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
   const [highlightedSeq, setHighlightedSeq] = useState<number | null>(null);
@@ -1252,12 +1253,25 @@ export default function AppPage() {
     }
   }, [allowedTabs, currentTab]);
 
-  // Select demo role
-  const selectDemoRole = (role: "holder" | "admin" | "auditor") => {
+  // Select demo role and domain environment (.internal for tested accounts, .test for clean accounts)
+  const selectDemoRole = (role: "holder" | "admin" | "auditor", env?: "internal" | "test") => {
     if (!DEMO) return;
+    const targetEnv = env || demoEnv;
     setAuthRole(role);
-    setAuthEmail(`${role === "holder" ? "holder1" : role}@ledgerline.internal`);
-    setAuthPassword("DemoPassword123!");
+    if (targetEnv === "internal") {
+      setAuthEmail(`${role === "holder" ? "holder1" : role}@ledgerline.internal`);
+      setAuthPassword("DemoPassword123!");
+    } else {
+      setAuthEmail(`${role === "holder" ? "holder1" : role}@ledgerline.test`);
+      setAuthPassword(
+        role === "admin" ? "AdminPass123!" : role === "auditor" ? "AuditorPass123!" : "HolderPass123!"
+      );
+    }
+  };
+
+  const switchDemoEnv = (env: "internal" | "test") => {
+    setDemoEnv(env);
+    selectDemoRole(authRole, env);
   };
 
   // Map real AuditVerification report to 4-point health matrix checks
@@ -1395,7 +1409,24 @@ export default function AppPage() {
                       <div className="auth-demo-box">
                         <div className="auth-demo-header">
                           <span className="demo-chip">Demo Presets</span>
-                          <small>Auto-fill credentials</small>
+                          <div className="demo-env-toggles">
+                            <button
+                              type="button"
+                              className={`demo-env-btn ${demoEnv === "internal" ? "active" : ""}`}
+                              onClick={() => switchDemoEnv("internal")}
+                              title="Pre-populated accounts with rich transactional history, refusals, and test activity"
+                            >
+                              ⚡ Tested (.internal)
+                            </button>
+                            <button
+                              type="button"
+                              className={`demo-env-btn ${demoEnv === "test" ? "active" : ""}`}
+                              onClick={() => switchDemoEnv("test")}
+                              title="Clean, pristine evaluation accounts ready for fresh testing"
+                            >
+                              ✨ Fresh (.test)
+                            </button>
+                          </div>
                         </div>
                         <div className="seg">
                           <button
@@ -1420,6 +1451,17 @@ export default function AppPage() {
                             Auditor
                           </button>
                         </div>
+                        <p className="auth-demo-hint">
+                          {demoEnv === "internal" ? (
+                            <>
+                              <b>⚡ Tested accounts (.internal)</b>: Contains rich transactional history, refusals, and stress-test activity. Sign in as <code>admin@ledgerline.internal</code> to inspect tested accounts.
+                            </>
+                          ) : (
+                            <>
+                              <b>✨ Fresh clean accounts (.test)</b>: Clean, pristine evaluation accounts isolated from test data. Sign in as <code>admin@ledgerline.test</code> to test fresh money movements.
+                            </>
+                          )}
+                        </p>
                       </div>
                     )}
 
@@ -2396,6 +2438,31 @@ export default function AppPage() {
                       </div>
                     ))}
                   </div>
+
+                  {auditResult?.state_root && (
+                    <div
+                      style={{
+                        marginTop: "14px",
+                        padding: "10px 14px",
+                        background: "var(--bg)",
+                        borderRadius: "8px",
+                        border: "1px solid var(--line)",
+                        fontSize: "12px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <span className="chip" style={{ fontSize: "10px", padding: "2px 6px" }}>
+                        State Root Anchor
+                      </span>
+                      <small style={{ color: "var(--mut)" }}>Threat L7 External Proof:</small>
+                      <span className="mono" style={{ color: "var(--acc)", wordBreak: "break-all", fontWeight: 600 }}>
+                        {auditResult.state_root}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Conservation Summary Card */}

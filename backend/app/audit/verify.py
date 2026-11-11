@@ -10,6 +10,7 @@ If an attacker or superuser quietly modifies any row or balance, this algorithm 
 the exact account, sequence, and discrepant value.
 """
 
+import hashlib
 from collections import defaultdict
 from typing import Any
 from uuid import UUID
@@ -41,6 +42,7 @@ class AuditVerifyReport(BaseModel):
     total_journals_verified: int
     global_balance_sum: int
     customer_balance_sum: int
+    state_root: str | None = None
     discrepancies: list[Discrepancy]
 
 
@@ -214,6 +216,18 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
 
     verified = len(discrepancies) == 0
 
+    # Merkle/composite state root anchor calculation (Threat L7 mitigation)
+    anchor_lines = []
+    for acc in accounts:
+        acc_entries = entries_by_account.get(acc.id, [])
+        head_seq = acc_entries[-1].account_seq if acc_entries else 0
+        head_hash = bytes(acc_entries[-1].entry_hash).hex() if acc_entries else "00" * 32
+        anchor_lines.append(f"{acc.id}:{head_seq}:{head_hash}:{acc.balance}")
+    hasher = hashlib.sha256()
+    for line in sorted(anchor_lines):
+        hasher.update(line.encode("utf-8") + b"\n")
+    state_root = hasher.hexdigest()
+
     return AuditVerifyReport(
         verified=verified,
         is_valid=verified,
@@ -222,5 +236,6 @@ def verify_ledger_integrity(db: Session) -> AuditVerifyReport:
         total_journals_verified=total_journals,
         global_balance_sum=global_balance_sum,
         customer_balance_sum=customer_balance_sum,
+        state_root=state_root,
         discrepancies=discrepancies,
     )

@@ -181,3 +181,55 @@ def test_transfer_route_rejects_unowned_or_system_source_account(client: TestCli
     )
     assert resp_unowned.status_code == 404
     assert resp_unowned.json()["error"]["code"] == "not_found"
+
+
+def test_admin_domain_isolation_test_vs_internal(client: TestClient, db: Session):
+    """Prove that .test and .internal environments are strictly isolated for admin inspection."""
+    from app.auth.passwords import hash_password
+    from app.db.models import User
+
+    pwd_hash = hash_password("IsoPassword123!")
+    test_tag = uuid.uuid4().hex[:6]
+
+    # 1. Provision isolated users
+    admin_test = User(id=uuid.uuid4(), email=f"adm_{test_tag}@ledgerline.test", password_hash=pwd_hash, role="admin", is_active=True)
+    admin_internal = User(id=uuid.uuid4(), email=f"adm_{test_tag}@ledgerline.internal", password_hash=pwd_hash, role="admin", is_active=True)
+    holder_test = User(id=uuid.uuid4(), email=f"h_{test_tag}@ledgerline.test", password_hash=pwd_hash, role="holder", is_active=True)
+    holder_internal = User(id=uuid.uuid4(), email=f"h_{test_tag}@ledgerline.internal", password_hash=pwd_hash, role="holder", is_active=True)
+
+    db.add_all([admin_test, admin_internal, holder_test, holder_internal])
+    db.commit()
+
+    # 2. Provision isolated accounts
+    acc_test = create_customer_account(db, f"Vault Test ({test_tag}) (test)", holder_test.id, overdraft_limit=0)
+    acc_internal = create_customer_account(db, f"Vault Internal ({test_tag}) (internal)", holder_internal.id, overdraft_limit=0)
+
+    # 3. Test Admin (.test) session
+    adm_test_token, _ = create_session(db, admin_test)
+    headers_test = {"Authorization": f"Bearer {adm_test_token}"}
+
+    # Verify list_accounts only contains .test account
+    resp_list_test = client.get("/accounts", headers=headers_test)
+    assert resp_list_test.status_code == 200
+    listed_ids_test = [a["id"] for a in resp_list_test.json()["accounts"]]
+    assert str(acc_test.id) in listed_ids_test
+    assert str(acc_internal.id) not in listed_ids_test
+
+    # Direct access: .test account succeeds, .internal account returns 404
+    assert client.get(f"/accounts/{acc_test.id}", headers=headers_test).status_code == 200
+    assert client.get(f"/accounts/{acc_internal.id}", headers=headers_test).status_code == 404
+
+    # 4. Test Admin (.internal) session
+    adm_int_token, _ = create_session(db, admin_internal)
+    headers_int = {"Authorization": f"Bearer {adm_int_token}"}
+
+    # Verify list_accounts only contains .internal account
+    resp_list_int = client.get("/accounts", headers=headers_int)
+    assert resp_list_int.status_code == 200
+    listed_ids_int = [a["id"] for a in resp_list_int.json()["accounts"]]
+    assert str(acc_internal.id) in listed_ids_int
+    assert str(acc_test.id) not in listed_ids_int
+
+    # Direct access: .internal account succeeds, .test account returns 404
+    assert client.get(f"/accounts/{acc_internal.id}", headers=headers_int).status_code == 200
+    assert client.get(f"/accounts/{acc_test.id}", headers=headers_int).status_code == 404

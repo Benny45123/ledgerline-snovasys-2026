@@ -57,7 +57,7 @@
 | L4 | Refused attempts erased to hide probing          | Same append-only protection on `refused_attempts`        | `tests/security/test_append_only.py`                 | CLOSED                                                                                                                               |
 | L5 | Statement editing by changing `accounts.balance` | Balance verified against latest ledger entry in verify   | `tests/security/test_hash_chain.py`                  | CLOSED                                                                                                                               |
 | L6 | Duplicate requests hidden                        | `idempotency_replays` table is append-only               | `tests/security/test_append_only.py`                 | CLOSED                                                                                                                               |
-| L7 | Chain head rewritten along with all rows         | Export head hashes periodically to README/external place | manual                                               | ACCEPTED (candidate): a full-database superuser rewrite is detectable only against an external anchor; document the anchor you chose |
+| L7 | Chain head rewritten along with all rows | Export composite state root anchor via `scripts/export_anchor.py` to README / external git tag | `scripts/export_anchor.py` | CLOSED (Mitigated via external State Root Anchor: SHA-256 over all account chain heads & balances) |
 
 ## E. API and platform
 

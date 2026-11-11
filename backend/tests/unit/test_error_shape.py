@@ -42,3 +42,12 @@ def test_domain_exception_defaults() -> None:
     idem_err = InvalidIdempotencyKeyError()
     assert idem_err.code == "invalid_idempotency_key"
     assert idem_err.status_code == 400
+
+
+def test_chunked_transfer_encoding_rejected_on_write(client) -> None:
+    resp = client.post("/auth/login", headers={"Transfer-Encoding": "chunked"}, content=b"{}")
+    assert resp.status_code == 400
+    data = resp.json()
+    assert data["error"]["code"] == "bad_request"
+    assert "chunked" in data["error"]["message"].lower()
+    assert "request_id" in data["error"]
