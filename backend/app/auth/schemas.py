@@ -14,8 +14,11 @@ from uuid import UUID
 from pydantic import BaseModel, BeforeValidator, ConfigDict, Field
 
 EMAIL_REGEX = re.compile(
-    r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+$"
+    r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$"
 )
+
+# RFC 2606 reserved test domains that are valid in test environments
+SPECIAL_USE_DOMAINS = (".test", ".internal", ".local", ".localhost", ".example")
 
 
 def validate_email_address(v: Any) -> str:
@@ -25,19 +28,28 @@ def validate_email_address(v: Any) -> str:
     clean = v.strip().lower()
     if not clean or len(clean) > 254:
         raise ValueError("Invalid email length.")
-    if not EMAIL_REGEX.match(clean):
-        raise ValueError("value is not a valid email address.")
 
+    # First, try email_validator with test_environment=True (handles RFC 2606 domains)
     try:
         from email_validator import validate_email
 
         valid = validate_email(clean, check_deliverability=False, test_environment=True)
         return str(valid.normalized)
-    except Exception as err:
-        # Fallback for special-use test and internal domains (.test, .internal, .local, .example)
-        if clean.endswith((".test", ".internal", ".local", ".localhost", ".example")):
-            return clean
-        raise ValueError("value is not a valid email address.") from err
+    except Exception:
+        # Fallback: allow special-use test domains that email_validator might reject
+        # Check if domain part ends with a special-use TLD
+        if "@" in clean:
+            domain = clean.split("@")[1]
+            if domain.endswith(SPECIAL_USE_DOMAINS) or domain in SPECIAL_USE_DOMAINS[1:]:
+                # Validate local part with regex only
+                local_part = clean.split("@")[0]
+                if re.match(r"^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+$", local_part):
+                    return clean
+
+        # Standard regex validation for regular domains (allows zero or more dots in domain)
+        if not EMAIL_REGEX.match(clean):
+            raise ValueError("value is not a valid email address.")
+        return clean
 
 
 Email = Annotated[str, BeforeValidator(validate_email_address)]
