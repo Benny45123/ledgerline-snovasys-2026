@@ -12,6 +12,7 @@ import {
   ReviewFlag,
   ApiError,
   setToken,
+  getToken,
   AccountInsights,
   ChatResponse,
   InsightCard,
@@ -110,12 +111,14 @@ export default function AppPage() {
   const [videoFade, setVideoFade] = useState(false);
 
   useEffect(() => {
-    if (!user && videoRef.current) {
-      videoRef.current.muted = true;
-      const rm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (!rm) {
-        videoRef.current.play().catch(() => {});
-      }
+    // Background video autoplays and loops via attributes on the <video> element.
+    // This effect only pauses it when the user prefers reduced motion.
+    if (
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches &&
+      videoRef.current
+    ) {
+      videoRef.current.pause();
     }
   }, [user]);
 
@@ -157,6 +160,12 @@ export default function AppPage() {
   const [statementNextAfter, setStatementNextAfter] = useState<number | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
+
+  // Add Account Modal State
+  const [addAccountModalOpen, setAddAccountModalOpen] = useState(false);
+  const [newAccountName, setNewAccountName] = useState("");
+  const [newAccountPurpose, setNewAccountPurpose] = useState("");
+  const [submittingNewAccount, setSubmittingNewAccount] = useState(false);
 
   // Move Money Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -325,7 +334,14 @@ export default function AppPage() {
   }, [addErrorToast]);
 
   useEffect(() => {
-    loadUserData();
+    // Lazy-load session: check for an existing token first.
+    // No token → show the login/create-account screen immediately (no auto-load).
+    // Token exists → verify the session behind the SessionLoader, then load the app.
+    if (!getToken()) {
+      setAuthReady(true);
+    } else {
+      loadUserData();
+    }
   }, [loadUserData]);
 
   // Isolate AI Copilot session strictly per authenticated user to prevent cross-tenant leak
@@ -973,6 +989,25 @@ export default function AppPage() {
     }
   };
 
+  // Add another account (existing users can request additional vaults)
+  const handleAddAccount = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAccountName.trim()) return;
+    try {
+      setSubmittingNewAccount(true);
+      const reqItem = await api.createAccountRequest(newAccountName.trim(), newAccountPurpose.trim() || undefined);
+      addToast(`New vault request "${newAccountName.trim()}" submitted for administrator approval.`);
+      setMyAccountRequests((prev) => [reqItem, ...prev]);
+      setNewAccountName("");
+      setNewAccountPurpose("");
+      setAddAccountModalOpen(false);
+    } catch (err) {
+      addErrorToast(err);
+    } finally {
+      setSubmittingNewAccount(false);
+    }
+  };
+
   // Filtered statements
   const filteredStatements = useMemo(() => {
     if (statementFilter === "all") return statements;
@@ -1604,12 +1639,19 @@ export default function AppPage() {
               ref={videoRef}
               id="lv"
               className={videoFade ? "fo" : ""}
+              autoPlay
+              loop
               muted
               playsInline
               preload="auto"
               poster="/app-poster.jpg"
               aria-hidden="true"
               src="/app-hero.mp4"
+              onLoadedData={() => {
+                if (!user && !videoFade) {
+                  videoRef.current?.play().catch(() => {});
+                }
+              }}
               onTimeUpdate={handleVideoTimeUpdate}
               onEnded={handleVideoEnded}
             />
@@ -1735,14 +1777,44 @@ export default function AppPage() {
                     </div>
                   </div>
                   {user.role !== "auditor" && (
-                    <button
-                      className="btn"
-                      onClick={() => openMoveModal("transfer")}
-                      disabled={accounts.length === 0}
-                      title={accounts.length === 0 ? "Account activation pending admin review" : "Move money"}
-                    >
-                      Move money
-                    </button>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <button
+                        className="btn"
+                        onClick={() => openMoveModal("transfer")}
+                        disabled={accounts.length === 0}
+                        title={accounts.length === 0 ? "Account activation pending admin review" : "Move money"}
+                      >
+                        Move money
+                      </button>
+                      <button
+                        className="btn o"
+                        onClick={() => {
+                          setAddAccountModalOpen(true);
+                          setNewAccountName("");
+                          setNewAccountPurpose("");
+                        }}
+                        title="Request an additional vault account"
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          <span
+                            style={{
+                              width: "16px",
+                              height: "16px",
+                              borderRadius: "4px",
+                              border: "1px solid currentColor",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            +
+                          </span>
+                          Add account
+                        </span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2166,8 +2238,81 @@ export default function AppPage() {
                     })}
                   </div>
                 </div>
-              </>
-            )}
+
+              {/* Pending Account Requests */}
+              {myAccountRequests.length > 0 && (
+                <div id="dashboard-pending-requests" className="card c" style={{ "--i": 6, marginTop: "18px" } as React.CSSProperties}>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      marginBottom: "14px",
+                      gap: "12px",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span
+                        style={{
+                          width: "8px",
+                          height: "8px",
+                          borderRadius: "50%",
+                          background: "var(--amb)",
+                          display: "inline-block",
+                        }}
+                      />
+                      <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 600 }}>Pending vault requests</h3>
+                    </div>
+                    <span className="chip n">Awaiting administrator review</span>
+                  </div>
+                  <div className="tbl">
+                    {myAccountRequests.map((req) => (
+                      <div
+                        key={`pending-req-${req.id}`}
+                        className="tr"
+                        style={{
+                          gridTemplateColumns: "2.5fr 1fr auto",
+                          padding: "12px 14px",
+                          borderBottom: "1px solid var(--line)",
+                        }}
+                      >
+                        <div>
+                          <b className="mono">{req.account_name}</b>
+                          <small style={{ display: "block", marginTop: "2px" }}>
+                            {req.purpose ?? "No purpose specified"}
+                          </small>
+                        </div>
+                        <div className="x" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                          <span
+                            className={`chip ${
+                              req.status === "pending" ? "a" : req.status === "approved" ? "ok" : "b"
+                            }`}
+                          >
+                            {req.status === "pending" ? "Pending" : req.status === "approved" ? "Approved" : "Rejected"}
+                          </span>
+                          {req.status === "approved" && req.account_number && (
+                            <span className="mono" style={{ fontSize: "11px", color: "var(--mut)" }}>
+                              {req.account_number}
+                            </span>
+                          )}
+                        </div>
+                        {req.account_number && (
+                          <div className="r x mono" style={{ fontSize: "11px" }}>
+                            {req.account_number}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                    {myAccountRequests.length === 0 && (
+                      <div style={{ padding: "24px 16px", textAlign: "center", color: "var(--mut)" }}>
+                        <p style={{ margin: 0, fontSize: "14px" }}>No pending requests.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
 
             {/* VIEW B: STATEMENT */}
             {currentTab === "statement" && (
@@ -2217,14 +2362,44 @@ export default function AppPage() {
                     </div>
                   </div>
                   {user.role !== "auditor" && (
-                    <button
-                      className="btn"
-                      onClick={() => openMoveModal("transfer")}
-                      disabled={accounts.length === 0}
-                      title={accounts.length === 0 ? "Account activation pending admin review" : "Move money"}
-                    >
-                      Move money
-                    </button>
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center" }}>
+                      <button
+                        className="btn"
+                        onClick={() => openMoveModal("transfer")}
+                        disabled={accounts.length === 0}
+                        title={accounts.length === 0 ? "Account activation pending admin review" : "Move money"}
+                      >
+                        Move money
+                      </button>
+                      <button
+                        className="btn o"
+                        onClick={() => {
+                          setAddAccountModalOpen(true);
+                          setNewAccountName("");
+                          setNewAccountPurpose("");
+                        }}
+                        title="Request an additional vault account"
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          <span
+                            style={{
+                              width: "16px",
+                              height: "16px",
+                              borderRadius: "4px",
+                              border: "1px solid currentColor",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                            }}
+                          >
+                            +
+                          </span>
+                          Add account
+                        </span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -2970,6 +3145,51 @@ export default function AppPage() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ====================================================================
+          4. ADD ACCOUNT MODAL
+          ==================================================================== */}
+      {addAccountModalOpen && (
+        <div className="md on" onClick={(e) => e.target === e.currentTarget && setAddAccountModalOpen(false)}>
+          <div className="mc">
+            <h3>Add vault account</h3>
+            <p className="sm2" style={{ marginBottom: "18px" }}>
+              Request an additional double-entry vault. An administrator must approve it before it becomes active.
+            </p>
+            <form onSubmit={handleAddAccount} style={{ display: "grid", gap: "14px" }}>
+              <label>
+                <span style={{ fontSize: "12px", color: "var(--mut)", display: "block", marginBottom: "4px" }}>
+                  Vault account label
+                </span>
+                <input
+                  value={newAccountName}
+                  onChange={(e) => setNewAccountName(e.target.value)}
+                  placeholder="e.g. Savings Vault"
+                  required
+                />
+              </label>
+              <label>
+                <span style={{ fontSize: "12px", color: "var(--mut)", display: "block", marginBottom: "4px" }}>
+                  Business purpose (optional)
+                </span>
+                <input
+                  value={newAccountPurpose}
+                  onChange={(e) => setNewAccountPurpose(e.target.value)}
+                  placeholder="e.g. Personal savings & emergency fund"
+                />
+              </label>
+              <div className="mrow">
+                <button className="btn o" onClick={() => setAddAccountModalOpen(false)}>
+                  Cancel
+                </button>
+                <button className="btn w" type="submit" disabled={submittingNewAccount}>
+                  {submittingNewAccount ? "Submitting…" : "+ Request vault"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

@@ -48,7 +48,7 @@ def validate_email_address(v: Any) -> str:
 
         # Standard regex validation for regular domains (allows zero or more dots in domain)
         if not EMAIL_REGEX.match(clean):
-            raise ValueError("value is not a valid email address.")
+            raise ValueError("value is not a valid email address.") from None
         return clean
 
 
