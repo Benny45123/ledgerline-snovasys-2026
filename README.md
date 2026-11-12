@@ -1,6 +1,6 @@
 # BalanceVault (formerly LedgerLine) — Money Movement with a Ledger You Can Prove
 
-> **Snovasys Fresher Hiring Challenge 2026**  
+> **Snovasys Fresher Hiring Challenge 2026**
 > *"One rupee created, lost, or moved by the wrong person costs the system. A small system that is always right beats a large one that leaks."*
 
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://www.python.org/)
@@ -41,21 +41,25 @@ frontend/
 ```
 
 ### Aesthetic & Visual Identity
+
 - **Dark & Light Mode Engine**: Dynamic CSS tokens (`--bg`, `--bg2`, `--fg`, `--mut`, `--line`, `--tint`, `--acc`, `--bad`) persisted via `localStorage` with zero-flash pre-hydration scripts.
 - **Glassmorphism & Contrast**: Multi-layered backdrop blurs (`backdrop-filter: blur(20px)`), hairline borders (`rgba(255,255,255,0.08)`), and high-contrast accessibility (WCAG AA compliant).
 - **Matrix Streamer**: Animated, multi-column transactional log streams embedded into visual divider bands.
 
 ### Interactive 3D Phone Stage (`perspective: 1400px`)
+
 - **Spatial Pointer Tracking**: The hero features an interactive 3D phone model rendered using hardware-accelerated CSS perspective matrices. It tracks pointer coordinates dynamically with smooth inertia transitions (`rotateX`, `rotateY`, `scale3d`).
 - **Floating Ambient HUD Cards**: Floating status pills (e.g. duplicate retry toast `Idempotent-Replayed: true`) hover above the stage in 3D z-space.
 - **Motion Accessibility**: Automatically detects `prefers-reduced-motion` to smoothly disable 3D tilts and animations for users sensitive to motion.
 
 ### Typography System
+
 - **Editorial Display**: *Instrument Serif* — used for emotive section markers and high-impact hero headings.
 - **Primary Interface**: *Inter Tight* & *Inter* — engineered for dense tabular screens, clear forms, and high-legibility UI labels.
 - **Financial Monospace**: *JetBrains Mono* — zero-width drift, tabular figures (`font-variant-numeric: tabular-nums`), ensuring debit and credit columns align down to the paise.
 
 ### Choreographed Sticky Storytelling
+
 - The `#how` section synchronizes three distinct steps with the sticky 3D preview through an `IntersectionObserver`:
   1. `01 — BOOKS BALANCE`: Visualizes dual-entry balancing in real time.
   2. `02 — EXACTLY ONCE`: Simulates network retries and duplicate rejection.
@@ -88,6 +92,7 @@ backend/
 ```
 
 ### The Sole Money Movement Pipeline: `post_movement()`
+
 All money movement in the entire codebase passes exclusively through `app/ledger/service.py::post_movement()`. It executes inside a single database transaction across 6 strict phases:
 
 ```mermaid
@@ -96,9 +101,9 @@ sequenceDiagram
     actor Client as Caller / Frontend
     participant Svc as post_movement()
     participant DB as PostgreSQL 16 (READ COMMITTED)
-    
+  
     Client->>Svc: Request Movement (Idempotency-Key: X)
-    
+  
     rect rgb(240, 248, 255)
     Note over Svc,DB: Phase 1: Claim Idempotency Key
     Svc->>DB: INSERT INTO idempotency_keys
@@ -138,6 +143,7 @@ sequenceDiagram
 ```
 
 ### Inviolable PostgreSQL Defense-in-Depth Triggers
+
 - **`forbid_mutation`**: Rejects any `UPDATE`, `DELETE`, or `TRUNCATE` issued against `journals`, `ledger_entries`, `refused_attempts`, or audit logs.
 - **`journal_sums_to_zero`**: Deferred constraint trigger running at `COMMIT`, guaranteeing $\sum \text{entries} = 0$.
 - **`balance_cache_matches_entry`**: Asserts that `accounts.balance == balance_after` of that account's latest ledger entry.
@@ -149,29 +155,20 @@ sequenceDiagram
 
 Authentication uses Argon2id password hashing and 256-bit cryptographically secure opaque bearer tokens. Foreign account lookups return uniform `404 Not Found` (never 403) to eliminate account enumeration attacks.
 
-The database seeds two dedicated account environments:
-1. **Fresh Clean Accounts (`@ledgerline.test`)**: Pristine balances intended for evaluators to test deposits, withdrawals, and transfers from a clean slate.
-2. **Pre-Tested Accounts (`@ledgerline.internal`)**: Pre-populated accounts containing rich transaction activity, 12-day movement charts, refusal records, and administrative review flags from extensive test suites.
+The database seeds  dedicated account environments:
 
-### Set A: Fresh / Clean Evaluation Accounts (`.test`)
-> *Use these accounts for clean-slate testing, verifying invariants, and initiating fresh transfers.*
+1. **Pre-Tested Accounts (`@ledgerline.internal`)**: Pre-populated accounts containing rich transaction activity, 12-day movement charts, refusal records, and administrative review flags from extensive test suites.
 
-| Role | Email | Password | Allowed Capabilities |
-| :--- | :--- | :--- | :--- |
-| **`admin`** | `admin@ledgerline.test` | `AdminPass123!` | User lifecycle, account onboarding approval, freeze/unfreeze accounts, system adjustments against SUSPENSE. |
-| **`holder`** | `holder1@ledgerline.test` | `HolderPass123!` | Primary customer vault: Deposit, withdraw, transfer between accounts, inspect keyset statements. |
-| **`holder`** | `holder2@ledgerline.test` | `HolderPass123!` | Counterparty customer vault for cross-account transfer verification. |
-| **`auditor`** | `auditor@ledgerline.test` | `AuditorPass123!` | Strictly read-only. Inspect ledger entries, call `/audit/verify`, inspect replay logs. All POST/PUT routes return 403. |
+### Pre-Tested Accounts with Historical Activity (`.internal`)
 
-### Set B: Pre-Tested Accounts with Historical Activity (`.internal`)
 > *Use these accounts to immediately inspect populated dashboard charts, keyset statements with refused attempts, and the AI Review Queue.*
 
-| Role | Email | Password | Description / Context |
-| :--- | :--- | :--- | :--- |
-| **`admin`** | `admin@ledgerline.internal` | `DemoPassword123!` | Access to the AI Review Queue with pending onboarding requests and surveillance flags. |
-| **`holder`** | `holder1@ledgerline.internal` | `DemoPassword123!` | Populated 12-day net movement chart, Dr/Cr entries, and recorded insufficient funds refusals. |
-| **`holder`** | `holder2@ledgerline.internal` | `DemoPassword123!` | Active counterparty vault with multiple incoming and outgoing ledger entries. |
-| **`auditor`** | `auditor@ledgerline.internal` | `DemoPassword123!` | Direct read-only inspection of the complete multi-entry cryptographic audit log. |
+| Role                  | Email                           | Password             | Description / Context                                                                         |
+| :-------------------- | :------------------------------ | :------------------- | :-------------------------------------------------------------------------------------------- |
+| **`admin`**   | `admin@ledgerline.internal`   | `DemoPassword123!` | Access to the AI Review Queue with pending onboarding requests and surveillance flags.        |
+| **`holder`**  | `holder1@ledgerline.internal` | `DemoPassword123!` | Populated 12-day net movement chart, Dr/Cr entries, and recorded insufficient funds refusals. |
+| **`holder`**  | `holder2@ledgerline.internal` | `DemoPassword123!` | Active counterparty vault with multiple incoming and outgoing ledger entries.                 |
+| **`auditor`** | `auditor@ledgerline.internal` | `DemoPassword123!` | Direct read-only inspection of the complete multi-entry cryptographic audit log.              |
 
 > 💡 **UI Tip**: In the web application login screen, toggle between **⚡ Tested (.internal)** and **✨ Fresh (.test)** in the Demo Presets box to instantly auto-fill credentials for either environment.
 
@@ -209,11 +206,13 @@ backend/tests/
 ## 6. Getting Started Locally
 
 ### Prerequisites
+
 - Python 3.12+ & `uv` package manager
 - Node.js 20+ & `pnpm` (or `npm`)
 - PostgreSQL 16 (Local Docker or Supabase / Neon connection)
 
 ### 1. Database & Backend Setup
+
 ```bash
 # Navigate to backend directory
 cd backend
@@ -243,6 +242,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 Backend API will be live at: `http://localhost:8000` (Docs at `/docs`).
 
 ### 2. Frontend Setup
+
 ```bash
 # Navigate to frontend directory
 cd frontend
@@ -259,6 +259,7 @@ Frontend UI will be live at: `http://localhost:3000`.
 ## 7. Try the Hostile Scenarios (Verify via `curl`)
 
 ### A. Idempotent Transfer & Replay
+
 ```bash
 # 1. Login as holder1
 TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
@@ -282,6 +283,7 @@ curl -i -X POST http://localhost:8000/transfers \
 ```
 
 ### B. Run Cryptographic Audit Verification
+
 ```bash
 # Login as auditor
 AUDITOR_TOKEN=$(curl -s -X POST http://localhost:8000/auth/login \
@@ -303,17 +305,17 @@ In accordance with the hiring challenge guidelines, AI tools were used for archi
 
 ## 9. Deliverables & Documentation Index
 
-| Deliverable | Location | Description |
-| :--- | :--- | :--- |
-| **API Reference** | [`docs/API.md`](file:///workspace/docs/API.md) | Exhaustive endpoint specification: who may call it, request/response, and effect on money. |
-| **Threat Model** | [`THREATS.md`](file:///workspace/THREATS.md) | 46 concrete threats across concurrency, idempotency, auth, and tampering—all closed by tests. |
-| **Mutation Testing** | [`docs/MUTATION_REPORT.md`](file:///workspace/docs/MUTATION_REPORT.md) | Contractual proof: 5/5 core security mechanisms crippled and killed by test suites. |
-| **AI Prompts Log** | [`PROMPTS.md`](file:///workspace/PROMPTS.md) | 12 dated sessions detailing human instructions, AI bugs, tool calls, and verified fixes. |
-| **Architecture Specification** | [`docs/ARCHITECTURE.md`](file:///workspace/docs/ARCHITECTURE.md) | Detailed 6-phase atomic movement protocol, hash chaining, and invariant proofs. |
-| **Database Schema** | [`docs/DB_SCHEMA.md`](file:///workspace/docs/DB_SCHEMA.md) | Full PostgreSQL schema, constraints, triggers, and immutability rules. |
-| **Design Decisions** | [`docs/DESIGN_DECISIONS.md`](file:///workspace/docs/DESIGN_DECISIONS.md) | Plain-English rationale for PostgreSQL 16, double-entry, sorted locking, and integer paise. |
-| **Unfinished & Scope Cuts** | [`docs/UNFINISHED.md`](file:///workspace/docs/UNFINISHED.md) | Transparent register of deliberate trade-offs, accepted risks, and in-progress items. |
-| **Submission Write-Up** | [`docs/WRITEUP.md`](file:///workspace/docs/WRITEUP.md) | Official 750-word write-up and answers to the 6 submission portal questions. |
+| Deliverable                          | Location                                                                  | Description                                                                                    |
+| :----------------------------------- | :------------------------------------------------------------------------ | :--------------------------------------------------------------------------------------------- |
+| **API Reference**              | [`docs/API.md`](file:///workspace/docs/API.md)                           | Exhaustive endpoint specification: who may call it, request/response, and effect on money.     |
+| **Threat Model**               | [`THREATS.md`](file:///workspace/THREATS.md)                             | 46 concrete threats across concurrency, idempotency, auth, and tampering—all closed by tests. |
+| **Mutation Testing**           | [`docs/MUTATION_REPORT.md`](file:///workspace/docs/MUTATION_REPORT.md)   | Contractual proof: 5/5 core security mechanisms crippled and killed by test suites.            |
+| **AI Prompts Log**             | [`PROMPTS.md`](file:///workspace/PROMPTS.md)                             | 12 dated sessions detailing human instructions, AI bugs, tool calls, and verified fixes.       |
+| **Architecture Specification** | [`docs/ARCHITECTURE.md`](file:///workspace/docs/ARCHITECTURE.md)         | Detailed 6-phase atomic movement protocol, hash chaining, and invariant proofs.                |
+| **Database Schema**            | [`docs/DB_SCHEMA.md`](file:///workspace/docs/DB_SCHEMA.md)               | Full PostgreSQL schema, constraints, triggers, and immutability rules.                         |
+| **Design Decisions**           | [`docs/DESIGN_DECISIONS.md`](file:///workspace/docs/DESIGN_DECISIONS.md) | Plain-English rationale for PostgreSQL 16, double-entry, sorted locking, and integer paise.    |
+| **Unfinished & Scope Cuts**    | [`docs/UNFINISHED.md`](file:///workspace/docs/UNFINISHED.md)             | Transparent register of deliberate trade-offs, accepted risks, and in-progress items.          |
+| **Submission Write-Up**        | [`docs/WRITEUP.md`](file:///workspace/docs/WRITEUP.md)                   | Official 750-word write-up and answers to the 6 submission portal questions.                   |
 
 ---
 
