@@ -1468,7 +1468,8 @@ export default function AppPage() {
                     <label>
                       Email
                       <input
-                        type="email"
+                        type="text"
+                        inputMode="email"
                         value={authEmail}
                         onChange={(e) => setAuthEmail(e.target.value)}
                         placeholder="holder1@ledgerline.internal"
@@ -1510,7 +1511,8 @@ export default function AppPage() {
                     <label>
                       Email
                       <input
-                        type="email"
+                        type="text"
+                        inputMode="email"
                         value={authEmail}
                         onChange={(e) => setAuthEmail(e.target.value)}
                         placeholder="name@example.com"
