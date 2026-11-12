@@ -45,6 +45,35 @@ const DEFAULT_SUGGESTIONS = [
   "Run reconciliation audit",
 ];
 
+/**
+ * Premium session loader.
+ *
+ * Rendered only while we verify whether a session exists (authReady === false &&
+ * user === null). This prevents a flash of the sign-in screen on refresh before
+ * we know the correct destination.
+ *
+ * Everything is drawn from the design-system variables (--bg / --bg2 / --fg /
+ * --acc / --line / --mut / --sh) so the loader always matches the active theme,
+ * and it respects prefers-reduced-motion.
+ */
+function SessionLoader() {
+  return (
+    <div className="session-loader">
+      <div className="session-card">
+        <div className="session-mark" aria-hidden="true">
+          <span className="session-dot" />
+          <span className="session-dot" />
+          <span className="session-dot" />
+        </div>
+        <div className="session-text">
+          <h2 className="session-title">Securing your session</h2>
+          <p className="session-sub">Verifying your ledger credentials…</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function AppPage() {
   // Theme state
   const [theme, setTheme] = useState<"light" | "dark">("light");
@@ -71,6 +100,7 @@ export default function AppPage() {
   const [demoEnv, setDemoEnv] = useState<"internal" | "test">("internal");
   const [authAccountName, setAuthAccountName] = useState("");
   const [loginLoading, setLoginLoading] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
   const [highlightedSeq, setHighlightedSeq] = useState<number | null>(null);
 
 
@@ -290,6 +320,7 @@ export default function AppPage() {
       }
     } finally {
       setDataLoading(false);
+      setAuthReady(true);
     }
   }, [addErrorToast]);
 
@@ -1341,7 +1372,9 @@ export default function AppPage() {
       {/* ====================================================================
           1. AUTH SCREEN (Matching reference app.html)
           ==================================================================== */}
-      {!user ? (
+      {!user && !authReady ? (
+        <SessionLoader />
+      ) : !user ? (
         <div className="auth">
           <div className="al">
             <div className="fo">
