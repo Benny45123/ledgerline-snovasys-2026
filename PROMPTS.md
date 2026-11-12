@@ -2,9 +2,14 @@
 
 This file documents the AI prompts, code generations, human corrections, and verification steps taken throughout the development of **LedgerLine** for the Snovasys Fresher Hiring Challenge 2026.
 
+**Commit links:** every dated entry below links to the commit where the described work or fix landed. Where one entry spans several commits, the primary commit is linked and the full sequence is visible in `git log`.
+
 ---
 
 ## 2026-11-06 15:30 IST — Landing Page UI Architecture & Implementation
+
+**Fix commit:** [b6067ae](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/b6067ae3be829d80fbec9bc4a11e2b542851007f) — feat(frontend): responsive fintech landing page with 3D tilt and storytelling
+
 
 ### 1. User Prompt
 
@@ -37,6 +42,9 @@ This file documents the AI prompts, code generations, human corrections, and ver
 
 ## 2026-11-06 15:37 IST — Turbopack CSS @import Rule Ordering Fix
 
+**Fix commit:** [b6067ae](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/b6067ae3be829d80fbec9bc4a11e2b542851007f) — feat(frontend): responsive fintech landing page with 3D tilt and storytelling
+
+
 ### 1. User Prompt / Build Error
 
 ```
@@ -66,6 +74,9 @@ Tailwind CSS v4's Turbopack loader (`@tailwindcss/turbopack`) compiles `@import 
 
 ## 2026-11-06 16:36 IST — Threats Analysis & Pre-Implementation Planning
 
+**Fix commit:** [83b26f6](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/83b26f67b528e84f10ba4d0ad56c313c2116e911) — Initial Setup , Docs, Architecture, Problem Statement, agent-tasks files
+
+
 ### 1. User Prompt
 
 > "/plan Start from AGENTS.md and follow its read order completely. Do not write code yet. Summarise the invariants in your own words, list the three riskiest parts of this build, and list any ambiguity or conflict you see between the documents. Wait for my answer."
@@ -85,9 +96,16 @@ Analyzed all 46 threat vectors categorized into 7 domains:
 - **F. AI Review Feature (R1–R4)**: Isolated from ledger writes; AI suggestions and human admin decisions are stored immutably in append-only tables.
 - **G. Knowingly Accepted Risks**: Single region / single DB (availability trade-off, cannot lose money); superuser tampering detectable but not preventable without external hash publication.
 
+### 3. What Was Wrong & What Was Done Instead
+
+- The first pass left the L7 gap at “detectable but not preventable”: a DB-only hash chain can prove a superuser rewrote history, but cannot stop the rewrite. The plan was corrected by adding an external State Root Anchor export (`scripts/export_anchor.py`, `GET /audit/anchor`) over all account chain heads and balances, so any historical rewrite becomes detectable outside the database. Implemented in the 2026-11-11 Threat L7 entry below.
+
 ---
 
 ## 2026-11-06 17:00 IST — Backend Core Implementation & Architectural Enhancements
+
+**Fix commit:** [bbb6f6d](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/bbb6f6d70be7ea6dd44e6a26586877deb5493b42) — feat(backend): core ledger engine, postgres triggers, stratified tests, and documentation
+
 
 ### 1. User Prompt
 
@@ -120,6 +138,9 @@ Analyzed all 46 threat vectors categorized into 7 domains:
 ---
 
 ## 2026-11-07 11:15 IST — Landing Page CSS Conflict Resolution & Full App Integration
+
+**Fix commit:** [36b704a](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/36b704a249836d7df47cc30cf96e007c9878b0f3) — feat(ui): integrate Figma-exported HTML design for sign-in and dashboard
+
 
 ### 1. User Prompt
 
@@ -163,6 +184,9 @@ Analyzed all 46 threat vectors categorized into 7 domains:
 
 ## 2026-11-07 11:35 IST — Auth Page Video & Typography Extraction from app.html
 
+**Fix commit:** [36b704a](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/36b704a249836d7df47cc30cf96e007c9878b0f3) — feat(ui): integrate Figma-exported HTML design for sign-in and dashboard
+
+
 ### 1. User Prompt
 
 > "i cant see the video i have provided in @[frontend/LedgerLine — app.html] see the reference clearly and make changes the font color and everything should be same as reference the video in the login page should be visible"
@@ -190,6 +214,9 @@ Analyzed all 46 threat vectors categorized into 7 domains:
 
 ## 2026-11-07 13:30 IST — Synchronization of Execution Logs and Transparency Audit Trail
 
+**Fix commit:** [cd1374d](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/cd1374d03cc3b172688e6175723ca7ee4d00767f) — docs(backend): update security documentation and resolve validation errors
+
+
 ### 1. User Prompt
 
 > "update in PROMPTS.md and .ai/prompts.md"
@@ -200,9 +227,16 @@ Analyzed all 46 threat vectors categorized into 7 domains:
 - Extended the chronological tool execution log in `.ai/PROMPTS.md` with entries 114 to 150, documenting every file inspection, binary extraction (`app-hero.mp4`, `app-poster.jpg`), and component modification for auditability and verification.
 - Verified that both `PROMPTS.md` and `.ai/PROMPTS.md` reflect the exact state of the codebase.
 
+### 3. What Was Wrong & What Was Done Instead
+
+- The earlier logs had drifted: some sessions existed in `PROMPTS.md` but not `.ai/PROMPTS.md` (and vice versa), and the tool-call table stopped before the video/poster extraction, so a reader could not trace a change back to its prompt. Corrected by writing the missing Sessions 5–7 and tool rows 114–150 into `.ai/PROMPTS.md`, then cross-checking both files against the current source tree.
+
 ---
 
 ## 2026-11-07 14:15 IST — Code Review Remediation (10 Review Findings Fixed)
+
+**Fix commit:** [8c6a49d](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/8c6a49d542a5f13182c3a08d35be0a5cd124cf0b) — fix(security): resolve 10 code review findings and harden auth/audit state
+
 
 ### 1. User Prompt
 
@@ -233,6 +267,9 @@ Follow-up findings addressed:
 
 ## 2026-11-07 14:45 IST — Pydantic v2 Strict Mode UUID String Deserialization Fix
 
+**Fix commit:** [72e5e68](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/72e5e683718cc57f2a7da76b252e2fa847e99b25) — fix(ledger): parse RFC UUID strings before validation under strict Pydantic v2
+
+
 ### 1. User Prompt / Live Runtime Error
 
 ```
@@ -256,6 +293,9 @@ In Pydantic v2, setting `strict=True` disables string-to-UUID coercion and requi
 
 ## 2026-11-07 15:38 IST — UI Polish, Alignment, and Multi-Account Switcher
 
+**Fix commit:** [36b704a](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/36b704a249836d7df47cc30cf96e007c9878b0f3) — feat(ui): integrate Figma-exported HTML design for sign-in and dashboard
+
+
 ### 1. User Prompt
 
 > "has_more: false · next_after: null · verified against latest ledger entry take out these like unnecessary things make it like a real product ui httpOnly session · idempotent writesv1.0 , this is no need in the lock screen and when i click move money in the amount placeholder the rupees section is bac=dly aligned check once these are the ui mistakes"
@@ -277,6 +317,9 @@ In Pydantic v2, setting `strict=True` disables string-to-UUID coercion and requi
 
 ## 2026-11-07 16:00 IST — Backend Security & Bug Audit Report Generation
 
+**Fix commit:** [cd1374d](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/cd1374d03cc3b172688e6175723ca7ee4d00767f) — docs(backend): update security documentation and resolve validation errors
+
+
 ### 1. User Prompt
 
 > "now find all the security issues and all the bugs in our code and check if there are any issues review the code backend part clearly and write me those in an .md file"
@@ -294,9 +337,16 @@ Conducted an exhaustive line-by-line defensive audit across the backend codebase
 
 Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and updated `.ai/STATUS.md` and `.ai/HANDOFF.md`.
 
+### 3. What Was Wrong & What Was Done Instead
+
+- No code was generated in this step; the deliverable was the audit report. The correction happened in the next entry: the report’s VULN-01 (admin adjustment blocked by the customer membership check) and VULN-02 (review decisions mutating the append-only `review_flags.status`) were fixed in `0cca59b`, and the remaining findings were scheduled in the remediation plan.
+
 ---
 
 ## 2026-11-09 11:30 IST — Backend Security & Integrity Remediation & Invariant Verification
+
+**Fix commit:** [0cca59b](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/0cca59b7a095a6a27491d781d5da1ae3749e600d) — fix(ledger): harden authorization, map lock timeouts, and fix statement pagination query
+
 
 ### 1. User Prompts
 
@@ -338,6 +388,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-09 13:00 IST — Live Verification, Net Movement Chart, Account Sync, and Keyset Pagination Fix
 
+**Fix commit:** [0cca59b](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/0cca59b7a095a6a27491d781d5da1ae3749e600d) — fix(ledger): harden authorization, map lock timeouts, and fix statement pagination query
+
+
 ### 1. User Prompts
 
 > "apple@Apples-MBP ledgerline-snovasys-2026 % scripts/mutation_check.sh
@@ -369,6 +422,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-09 16:00 IST — AI Copilot & Financial Intelligence Backend & UI Implementation
+
+**Fix commit:** [94e4e99](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/94e4e99768840676ce5dda9f53e1f8b9c41e8c48) — feat(review): add AI financial copilot, dynamic fraud risk scoring, and deployment automation
+
 
 ### 1. User Prompts
 
@@ -422,6 +478,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-09 16:30 IST — Disk Space Diagnostic & Desktop Copilot Drawer Slide Transition
 
+**Fix commit:** [94e4e99](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/94e4e99768840676ce5dda9f53e1f8b9c41e8c48) — feat(review): add AI financial copilot, dynamic fraud risk scoring, and deployment automation
+
+
 ### 1. User Prompts
 
 >
@@ -447,6 +506,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-09 16:55 IST — UI Bug Fixes: Navbar Sticky Blur ("Oily" Frosted Glass) & AI Feature Widget Sizing (`app.html` Parity)
+
+**Fix commit:** [3e5ea91](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/3e5ea91828f559bfec44e5186e4bdeb27495e0a1) — fix(review): address automated code review findings across security, analytics, frontend, and deployment
+
 
 ### 1. User Prompts
 
@@ -477,6 +539,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-09 17:15 IST — Refined Conciseness of AI Engine Tag & Hardened Navbar Frosted Glass Blur ("Oily" Hiding Effect)
 
+**Fix commit:** [3e5ea91](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/3e5ea91828f559bfec44e5186e4bdeb27495e0a1) — fix(review): address automated code review findings across security, analytics, frontend, and deployment
+
+
 ### 1. User Prompts
 
 > "DETERMINISTIC · ledgerline-analytics-v1 this tag is lengthy dont use it and when i scroll up the things behind navbar is like not good showing it should be blurred check @[frontend/LedgerLine — app.html]"
@@ -503,6 +568,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-09 17:40 IST — AI Copilot Response Optimization: Highlighted Direct Answer, Concise Context & Bulleted Findings
+
+**Fix commit:** [7e98859](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/7e988591dc59c4461d2f24d14374d8cefb171b6c) — fix(copilot): prioritize auth intent over anomaly to prevent shadowing role queries
+
 
 ### 1. User Prompts
 
@@ -531,6 +599,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-09 17:50 IST — Fix: Admin Role Recognition in AI Context & Customer Account Surveillance Oversight
+
+**Fix commit:** [71b5b5a](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/71b5b5a4cc36633b2fb2e54fdb1e6a3d9e8fba84) — feat(review): enforce Rule 7 admin spending boundary in AI Copilot
+
 
 ### 1. User Prompts
 
@@ -563,6 +634,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-09 18:05 IST — Dynamic Multi-Factor Fraud Risk Scoring & Global Reconciliation Scoping
+
+**Fix commit:** [94e4e99](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/94e4e99768840676ce5dda9f53e1f8b9c41e8c48) — feat(review): add AI financial copilot, dynamic fraud risk scoring, and deployment automation
+
 
 ### 1. User Prompts
 
@@ -604,6 +678,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-09 18:40 IST — Bug Fix: Cross-Session AI Copilot State Isolation on Logout & User Switching
 
+**Fix commit:** [3e5ea91](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/3e5ea91828f559bfec44e5186e4bdeb27495e0a1) — fix(review): address automated code review findings across security, analytics, frontend, and deployment
+
+
 ### 1. User Prompt
 
 > "i have one bug whenn i logged out as admin and logged in as holder 1 its showing admins messages in the ai chat"
@@ -630,6 +707,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-10 14:15 IST — Real-Time 12-Day Dynamic Net Movement Ledger Aggregation
 
+**Fix commit:** [3e5ea91](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/3e5ea91828f559bfec44e5186e4bdeb27495e0a1) — fix(review): address automated code review findings across security, analytics, frontend, and deployment
+
+
 ### 1. User Prompt
 
 > "The 12-day net movement chart on the dashboard currently displays illustrative sample data. I want this chart to compute dynamically from actual ledger entries for the active account. Calculate the net movement (credits minus debits) for each of the last 12 calendar days directly from confirmed ledger data. Scale bar heights proportionally relative to the peak daily absolute movement, display exact rupee tooltips on hover, and apply distinct negative tinting for debit-dominant days."
@@ -652,6 +732,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-10 16:30 IST — Institutional Account Onboarding & Admin Review Queue Workflow
+
+**Fix commit:** [849704f](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/849704f542baca6cd013ba4fa6c6b84775d121d9) — feat(onboarding): implement zero-state account request and admin review queue approval
+
 
 ### 1. User Prompt
 
@@ -680,6 +763,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-10 17:35 IST — AI Copilot Rule 7 Alignment: Strict Role Boundary & Admin Spending Prohibition
 
+**Fix commit:** [71b5b5a](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/71b5b5a4cc36633b2fb2e54fdb1e6a3d9e8fba84) — feat(review): enforce Rule 7 admin spending boundary in AI Copilot
+
+
 ### 1. User Prompt
 
 > "During administrative testing, I noticed that when an administrator inspects a customer account and asks the AI Copilot 'Can I withdraw money?', the AI answers that administrators can initiate withdrawals via the ledger interface. This is incorrect. Under Rule 7, administrators cannot spend or withdraw customer funds, and the server strictly returns 403 Forbidden. Align the AI Copilot system prompt, caller context, intent detection, and deterministic fallbacks so the AI strictly enforces Rule 7 and informs administrators that they cannot spend or withdraw customer funds."
@@ -704,6 +790,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-10 17:50 IST — Concurrency Race Test Isolation & High-Contention Idempotency Backoff
 
+**Fix commit:** [62bc47d](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/62bc47d7cfd32a41fa4df37c44928bab4b229569) — test(concurrency): isolate race test query by run ID and add idempotency retry backoff
+
+
 ### 1. User Prompt
 
 > "Fix the concurrency race test suite and idempotency integration tests. Under parallel execution on the shared test database, `test_no_overdraft_race.py` failed with an assertion mismatch on journal counts due to leftover rows from previous test runs. Furthermore, high-concurrency idempotency replay tests raised `LockTimeoutError` (503 Retry-After) without client retries. Isolate the race test assertions by unique run IDs and implement client retry backoff on lock timeouts."
@@ -726,6 +815,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-10 20:30 IST — BalanceVault Self-Service Onboarding, Redis Rate Limiting, & First-Admin Bootstrap
+
+**Fix commit:** [849704f](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/849704f542baca6cd013ba4fa6c6b84775d121d9) — feat(onboarding): implement zero-state account request and admin review queue approval
+
 
 ### 1. User Prompt
 
@@ -754,6 +846,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 
 ## 2026-11-10 21:05 IST — UI De-Cluttering: Restoring Clean 2-Column Admin Operations Layout
 
+**Fix commit:** [849704f](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/849704f542baca6cd013ba4fa6c6b84775d121d9) — feat(onboarding): implement zero-state account request and admin review queue approval
+
+
 ### 1. User Prompt
 
 > "in admin tab remove the user directory table it is dumping all race test accounts and breaking the layout, make it clean like the html mockup with accounts and adjustment side by side and review queue below"
@@ -774,6 +869,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-11 18:30 IST — Threat L7 State Root Export, Login Throttle IP Isolation, & 16 KB Body Limit Guard
+
+**Fix commit:** [ab531b3](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/ab531b3e5a3bc631f0ab85c46fd7fcce722a0ce1) — feat(authz): isolate .test and .internal environments, harden throttle & RFC email validation
+
 
 ### 1. User Prompt
 
@@ -803,6 +901,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-11 20:45 IST — Dual-Domain Account Seeding & RFC 2606 Special-Use Domain Validation
+
+**Fix commit:** [ab531b3](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/ab531b3e5a3bc631f0ab85c46fd7fcce722a0ce1) — feat(authz): isolate .test and .internal environments, harden throttle & RFC email validation
+
 
 ### 1. User Prompts
 
@@ -846,6 +947,9 @@ Generated the complete audit report at `docs/BACKEND_AUDIT_REPORT.md` and update
 ---
 
 ## 2026-11-11 21:40 IST — Strict Domain Environment Isolation (.test vs .internal) for Admin & Evaluators
+
+**Fix commit:** [ab531b3](https://github.com/Benny45123/ledgerline-snovasys-2026/commit/ab531b3e5a3bc631f0ab85c46fd7fcce722a0ce1) — feat(authz): isolate .test and .internal environments, harden throttle & RFC email validation
+
 
 ### 1. User Prompt
 
